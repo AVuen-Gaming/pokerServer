@@ -1,0 +1,22 @@
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "popio"
+  dbname: "poker"
+  sslmode: "disable"
+
+nats:
+  host: "localhost"
+  port: 4222
+  stream:
+    name: "mystream"
+    subjects:
+      - "subject1"
+      - "subject2"
+
+server:
+  port: "7000"
+
+temporal:
+  hostport: "localhost:7233"

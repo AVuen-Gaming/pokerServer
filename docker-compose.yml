@@ -1,0 +1,83 @@
+version: '3.9'
+
+services:
+  postgres:
+    container_name: pokerPSQL
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=popio
+      - POSTGRES_DB=poker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - poker_network
+
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: >
+      -js
+    environment:
+      - NATS_SERVER_NAME=nats-server
+      - NATS_LOG_LEVEL=debug
+      - NATS_JETSTREAM=true
+    volumes:
+      - nats-data:/data
+    networks:
+      - poker_network
+
+  temporal:
+    container_name: temporal
+    depends_on:
+      - postgres
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=popio
+      - POSTGRES_SEEDS=postgres
+      - PROMETHEUS_ENDPOINT=0.0.0.0:8000
+    image: temporalio/auto-setup:1.21.1
+    networks:
+      - poker_network
+    ports:
+      - 7233:7233
+
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    image: temporalio/admin-tools:1.21.1
+    networks:
+      - poker_network
+    stdin_open: true
+    tty: true
+
+  temporal-ui:
+    container_name: temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    image: temporalio/ui:2.16.2
+    networks:
+      - poker_network
+    ports:
+      - 8080:8080
+
+volumes:
+  nats-data:
+  postgres_data:
+
+networks:
+  poker_network:
