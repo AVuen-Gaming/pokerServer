@@ -32,7 +32,7 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 		return err
 	}
 
-	if table.AllFold {
+	if table.AllFoldExceptOne {
 		return nil //ver premios
 	}
 
@@ -48,7 +48,7 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 		return err
 	}
 
-	if table.AllFold {
+	if table.AllFoldExceptOne {
 		return nil //ver premios
 	}
 
@@ -64,7 +64,7 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 		return err
 	}
 
-	if table.AllFold {
+	if table.AllFoldExceptOne {
 		return nil //ver premios
 	}
 
@@ -80,8 +80,15 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 		return err
 	}
 
-	if table.AllFold {
+	if table.AllFoldExceptOne {
 		return nil //ver premios
+	}
+
+	table.AssignPlayerCardsFromSecTable(&SecTable)
+
+	err = workflow.ExecuteActivity(ctx, ShowDown, &table).Get(ctx, &table)
+	if err != nil {
+		return err
 	}
 
 	return nil

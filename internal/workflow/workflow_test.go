@@ -56,6 +56,7 @@ func TestTableWorkflow(t *testing.T) {
 	w.RegisterActivity(DealTurn)
 	w.RegisterActivity(DealRiver)
 	w.RegisterActivity(HandleTurns)
+	w.RegisterActivity(ShowDown)
 	// Start worker
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
@@ -109,8 +110,8 @@ func TestTableWorkflow(t *testing.T) {
 	}
 
 	// Start workflows
-	workflowID1 := "table-workflow-075"
-	workflowID2 := "table-workflow-076"
+	workflowID1 := "table-workflow-093"
+	workflowID2 := "table-workflow-094"
 
 	_, err = c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,

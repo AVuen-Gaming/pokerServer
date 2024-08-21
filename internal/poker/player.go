@@ -24,6 +24,10 @@ type Player struct {
 	HasFold          bool
 	HasAllIn         bool
 	IsEliminated     bool
+	HandStrength     int
+	BestHand         []Card
+	HandDescription  string
+	HandScore        int
 }
 
 func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player) error {

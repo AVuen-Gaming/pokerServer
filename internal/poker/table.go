@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sort"
 
+	"github.com/alexclewontin/riverboat/eval"
 	"github.com/nats-io/nats.go"
 )
 
 type Card struct {
-	Suit  string
-	Value string
+	Suit  string `json:"suit"`
+	Value string `json:"value"`
 }
 
 type PlayerCards struct {
@@ -36,12 +38,14 @@ type Table struct {
 	TurnCard           *Card
 	RiverCard          *Card
 	Players            []Player
+	Winners            []Player
 	BiggestBet         int
 	IsPreFlop          bool
 	Round              int
+	RoundFinish        bool
 	PreviousStage      string
 	BBValue            int
-	AllFold            bool
+	AllFoldExceptOne   bool
 }
 
 const (
@@ -202,17 +206,218 @@ func (table *Table) SetSMBB() {
 }
 
 func (table *Table) AllPlayersExceptOneFold() {
-	activePlayers := 0
+	activePlayers := []Player{}
 
+	// Recorre todos los jugadores para encontrar aquellos que no han foldeado, no están all-in y no están eliminados.
 	for _, player := range table.Players {
-		if !player.HasFold && !player.IsEliminated {
-			activePlayers++
+		if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
+			activePlayers = append(activePlayers, player)
 		}
 	}
 
-	if activePlayers > 1 {
-		table.AllFold = false
+	// Si solo queda un jugador activo, se le asigna como ganador y se marca la ronda como finalizada.
+	if len(activePlayers) == 1 {
+		table.Winners = activePlayers
+		table.RoundFinish = true
+		table.AllFoldExceptOne = true // Corrigiendo el nombre de la variable
+		table.CurrentTurn = ""        // No hay más turnos, ya que la ronda ha terminado
 	} else {
-		table.AllFold = true
+		table.AllFoldExceptOne = false
+		table.RoundFinish = false
 	}
+}
+
+func (table *Table) AllPlayersHaveCalled() bool {
+	for _, player := range table.Players {
+		// Ignorar jugadores que han hecho fold, están en all-in o están eliminados
+		if player.HasFold || player.HasAllIn || player.IsEliminated {
+			continue
+		}
+		// Si algún jugador aún tiene una cantidad pendiente para igualar, retornar false
+		if player.CallAmount > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (table *Table) CommunityCards() []Card {
+	var communityCards []Card
+	communityCards = append(communityCards, table.FlopCards...)
+	if table.TurnCard != nil {
+		communityCards = append(communityCards, *table.TurnCard)
+	}
+	if table.RiverCard != nil {
+		communityCards = append(communityCards, *table.RiverCard)
+	}
+	return communityCards
+}
+
+func (table *Table) AssignChipsToWinner(winner *Player) {
+	if winner == nil {
+		return
+	}
+
+	for i := range table.Players {
+		if table.Players[i].ID == winner.ID {
+			table.Players[i].Chips += table.TotalBet
+			table.TotalBet = 0
+			return
+		}
+	}
+}
+
+func (table *Table) EvaluateHand() {
+	suitMap := map[string]string{
+		"Clubs":    "C",
+		"Diamonds": "D",
+		"Hearts":   "H",
+		"Spades":   "S",
+	}
+	var winner Player
+	bestHandScore := 99999
+	table.CurrentStage = "showDown"
+
+	for _, player := range table.Players {
+		allCards := append(table.CommunityCards(), player.Cards...)
+		riverboatCards := make([]eval.Card, len(allCards))
+		if player.HasFold {
+			continue
+		}
+		for i, card := range allCards {
+			// Convertir el nombre del palo a su abreviación
+			suitAbbr, ok := suitMap[card.Suit]
+			if !ok {
+				panic(fmt.Sprintf("invalid suit: %v", card.Suit))
+			}
+			// Formatear el string de la carta
+			cardStr := fmt.Sprintf("%v%v", card.Value, suitAbbr)
+			riverboatCards[i] = eval.MustParseCardString(cardStr)
+		}
+
+		var bestFive []eval.Card
+		switch len(riverboatCards) {
+		case 5:
+			bestFive = riverboatCards
+		case 6:
+			bestFive, _ = eval.BestFiveOfSix(riverboatCards[0], riverboatCards[1], riverboatCards[2], riverboatCards[3], riverboatCards[4], riverboatCards[5])
+		case 7:
+			bestFive, _ = eval.BestFiveOfSeven(riverboatCards[0], riverboatCards[1], riverboatCards[2], riverboatCards[3], riverboatCards[4], riverboatCards[5], riverboatCards[6])
+
+		}
+
+		sort.Slice(bestFive, func(i, j int) bool {
+			rankI := int((bestFive[i] >> 8) & 0xF)
+			rankJ := int((bestFive[j] >> 8) & 0xF)
+
+			return rankI < rankJ
+		})
+
+		bestFiveOfSevenCards := bestFive[0:5]
+
+		// Evaluate the hand
+		handScore := eval.HandValue(bestFiveOfSevenCards[0], bestFiveOfSevenCards[1], bestFiveOfSevenCards[2], bestFiveOfSevenCards[3], bestFiveOfSevenCards[4])
+
+		//handStringify := HandDescription(handScore)
+
+		//winningHand := convertEvalCardsToCards(bestFiveOfSevenCards)
+
+		for i := range table.Players {
+			if table.Players[i].ID == player.ID {
+				table.Players[i].HandScore = handScore
+				if table.Players[i].HandScore < bestHandScore {
+					table.Winners = nil //rework para los side pots en un futuro
+					table.Winners = append(table.Winners, table.Players[i])
+					bestHandScore = table.Players[i].HandScore
+					winner = table.Players[i]
+				}
+			}
+		}
+	}
+	fmt.Println("el ganador es", winner)
+}
+
+func HandDescription(handScore int) string {
+	var handType string
+
+	switch {
+	case handScore > 6185:
+		handType = "High Card"
+	case handScore > 3325:
+		handType = "One Pair"
+	case handScore > 2467:
+		handType = "Two Pairs"
+	case handScore > 1609:
+		handType = "Three of a Kind"
+	case handScore > 1599:
+		handType = "Straight"
+	case handScore > 322:
+		handType = "Flush"
+	case handScore > 166:
+		handType = "Full House"
+	case handScore > 10:
+		handType = "Four of a Kind"
+	default:
+		handType = "Straight Flush"
+	}
+
+	return handType
+}
+
+func convertCardToEvalCard(card Card) eval.Card {
+	suits := map[string]int{"Clubs": 0, "Diamonds": 1, "Hearts": 2, "Spades": 3}
+	ranks := map[string]int{"2": 0, "3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7, "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12}
+
+	suit, suitExists := suits[card.Suit]
+	rank, rankExists := ranks[card.Value]
+
+	if !suitExists || !rankExists {
+		panic(fmt.Sprintf("Carta inválida: %s de %s", card.Value, card.Suit))
+	}
+
+	// Crear la carta con el formato correcto para el evaluador
+	evalCard := eval.Card((rank << 8) | suit)
+	fmt.Printf("Carta convertida: %d (rango: %d, palo: %d)\n", evalCard, rank, suit)
+
+	return evalCard
+}
+
+func (table *Table) AssignPlayerCardsFromSecTable(secTable *Table) {
+	playerCardsMap := make(map[string][]Card)
+	for _, player := range secTable.Players {
+		if !player.HasFold {
+			playerCardsMap[player.ID] = player.Cards
+		}
+	}
+
+	for i := range table.Players {
+		player := &table.Players[i]
+		if cards, ok := playerCardsMap[player.ID]; ok {
+			player.Cards = cards
+		}
+	}
+}
+
+func convertEvalCardToCard(evalCard eval.Card) Card {
+	suits := map[string]string{"H": "h", "D": "d", "C": "c", "S": "s"}
+	values := map[string]string{"2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "T": "T", "J": "J", "Q": "Q", "K": "K", "A": "A"}
+
+	cardStr := fmt.Sprintf("%v", evalCard)
+	valueStr := cardStr[:len(cardStr)-1]
+	suitStr := cardStr[len(cardStr)-1:]
+
+	return Card{
+		Suit:  suits[suitStr],
+		Value: values[valueStr],
+	}
+}
+
+func convertEvalCardsToCards(evalCards []eval.Card) []Card {
+	cards := make([]Card, len(evalCards))
+
+	for i, evalCard := range evalCards {
+		cards[i] = convertEvalCardToCard(evalCard)
+	}
+
+	return cards
 }
