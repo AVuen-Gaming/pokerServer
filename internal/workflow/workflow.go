@@ -33,6 +33,10 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	}
 
 	if table.AllFoldExceptOne {
+		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
+		if err != nil {
+			return err
+		}
 		return nil //ver premios
 	}
 
@@ -49,6 +53,10 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	}
 
 	if table.AllFoldExceptOne {
+		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
+		if err != nil {
+			return err
+		}
 		return nil //ver premios
 	}
 
@@ -65,6 +73,10 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	}
 
 	if table.AllFoldExceptOne {
+		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
+		if err != nil {
+			return err
+		}
 		return nil //ver premios
 	}
 
@@ -81,6 +93,10 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	}
 
 	if table.AllFoldExceptOne {
+		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
+		if err != nil {
+			return err
+		}
 		return nil //ver premios
 	}
 

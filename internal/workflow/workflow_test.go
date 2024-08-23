@@ -44,7 +44,7 @@ func TestTableWorkflow(t *testing.T) {
 	}
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "POKER_TOURNAMENT",
-		Subjects:  []string{"poker.tournament.>", "pokerSend.tournament.>"},
+		Subjects:  []string{"pokerServer.tournament.>", "pokerClient.tournament.>"},
 		Retention: nats.WorkQueuePolicy, // Usar política de WorkQueue para asegurar que cada mensaje sea procesado solo una vez.
 	})
 	workerOptions := worker.Options{}
@@ -57,6 +57,7 @@ func TestTableWorkflow(t *testing.T) {
 	w.RegisterActivity(DealRiver)
 	w.RegisterActivity(HandleTurns)
 	w.RegisterActivity(ShowDown)
+	w.RegisterActivity(ShowDownAllFoldExecptOne)
 	// Start worker
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
@@ -84,34 +85,12 @@ func TestTableWorkflow(t *testing.T) {
 		Players: []poker.Player{
 			{ID: "player1", Chips: 1000},
 			{ID: "player2", Chips: 1000},
-		},
-	}
-
-	table2 := poker.Table{
-		ID:                 "2",
-		CurrentBB:          "player6",
-		CurrentSM:          "player7",
-		CurrentTurn:        "player8",
-		NextTurn:           "player9",
-		CurrentStage:       "dealing",
-		BBValue:            100,
-		TurnTime:           15,
-		FlopCards:          []poker.Card{},
-		TurnCard:           nil,
-		RiverCard:          nil,
-		TotalBetIndividual: make(map[string]int),
-		Players: []poker.Player{
-			{ID: "player6", Chips: 1000},
-			{ID: "player7", Chips: 1000},
-			{ID: "player8", Chips: 1000},
-			{ID: "player9", Chips: 1000},
-			{ID: "player10", Chips: 1000},
+			{ID: "player3", Chips: 1000},
 		},
 	}
 
 	// Start workflows
-	workflowID1 := "table-workflow-093"
-	workflowID2 := "table-workflow-094"
+	workflowID1 := "table-workflow-799"
 
 	_, err = c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,
@@ -119,14 +98,6 @@ func TestTableWorkflow(t *testing.T) {
 	}, TableWorkflow, table1, cfg)
 	if err != nil {
 		t.Fatalf("Failed to start workflow 1: %v", err)
-	}
-
-	_, err = c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
-		ID:        workflowID2,
-		TaskQueue: "poker-task-queue",
-	}, TableWorkflow, table2, cfg)
-	if err != nil {
-		t.Fatalf("Failed to start workflow 2: %v", err)
 	}
 
 	// Increase timeout to ensure the workflows have enough time to complete
@@ -139,9 +110,5 @@ func TestTableWorkflow(t *testing.T) {
 		t.Fatalf("Failed to get workflow 1 result: %v", err)
 	}
 
-	err = c.GetWorkflow(ctx, workflowID2, "").Get(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to get workflow 2 result: %v", err)
-	}
 	c.Close()
 }

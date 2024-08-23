@@ -31,7 +31,7 @@ type Player struct {
 }
 
 func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player) error {
-	subject := fmt.Sprintf("poker.tournament.%s.%s", tableID, player.ID)
+	subject := fmt.Sprintf("pokerServer.tournament.%s.%s", tableID, player.ID)
 
 	messageBytes, err := json.Marshal(player)
 	if err != nil {

@@ -46,6 +46,8 @@ type Table struct {
 	PreviousStage      string
 	BBValue            int
 	AllFoldExceptOne   bool
+	PlayerActedInRound int
+	LastToRaiserIndex  int
 }
 
 const (
@@ -125,7 +127,7 @@ func createDeck() []Card {
 }
 
 func SendPTableUpdateToNATS(js nats.JetStreamContext, table *Table) error {
-	subject := fmt.Sprintf("poker.tournament.%s", table.ID)
+	subject := fmt.Sprintf("pokerServer.tournament.%s", table.ID)
 
 	messageBytes, err := json.Marshal(table)
 	if err != nil {

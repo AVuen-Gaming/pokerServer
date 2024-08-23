@@ -59,6 +59,7 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterActivity(DealTurn)
 	w.RegisterActivity(DealRiver)
 	w.RegisterActivity(ShowDown)
+	w.RegisterActivity(ShowDownAllFoldExecptOne)
 
 	// Start worker
 	go func() {
