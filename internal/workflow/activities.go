@@ -276,7 +276,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	js := GetJetStream()
-	table.CurrentStage = "ShowDownAllFoldEcxeptOne"
+	table.CurrentStage = "ShowDownAllFoldExceptOne"
 	table.AssignChipsToWinner(&table.Winners[0])
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
