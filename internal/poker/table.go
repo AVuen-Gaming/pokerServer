@@ -23,7 +23,7 @@ type PlayerCards struct {
 type Table struct {
 	ID                 string
 	CurrentBB          string
-	CurrentSM          string
+	CurrentSB          string
 	CurrentTurn        string
 	NextTurn           string
 	LastAction         string
@@ -182,7 +182,7 @@ func (table *Table) SetSMBB() {
 	smBet := table.BBValue / 2
 	for i := range table.Players {
 		player := &table.Players[i]
-		if player.ID == table.CurrentSM {
+		if player.ID == table.CurrentSB {
 			smPlayer = player
 			table.Players[i].Chips -= smBet
 			table.Players[i].TotalBet += smBet

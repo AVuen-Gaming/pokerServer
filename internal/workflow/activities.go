@@ -68,6 +68,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	js := GetJetStream()
 	table.LastToRaiserIndex = -1
 	bbIndex := -1
+	table.SetSMBB()
 
 	for i, player := range table.Players {
 		if player.ID == table.CurrentBB {
@@ -76,17 +77,25 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		}
 	}
 
-	if table.CurrentStage == "preFlop" {
-		table.SetSMBB()
-	}
-
 	if bbIndex == -1 {
 		return nil, fmt.Errorf("No se encontró el jugador con Big Blind en la mesa")
 	}
 
 	startingPlayerIndex := -1
+
 	if table.CurrentStage == "preFlop" {
-		startingPlayerIndex = (bbIndex + 1) % len(table.Players) // Jugador a la izquierda del BB
+		activePlayers := 0
+		for _, player := range table.Players {
+			if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
+				activePlayers++
+			}
+		}
+
+		if activePlayers > 2 {
+			startingPlayerIndex = (bbIndex + 1) % len(table.Players)
+		} else {
+			startingPlayerIndex = (bbIndex + 1) % len(table.Players)
+		}
 	} else {
 		for i := 1; i <= len(table.Players); i++ {
 			currentIndex := (bbIndex + i) % len(table.Players)
@@ -249,8 +258,16 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 }
 
 func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
+	js := GetJetStream()
 	table.EvaluateHand()
 	table.AssignChipsToWinner(&table.Winners[0])
+
+	table.CurrentStage = "ShowDown"
+
+	err := poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
@@ -258,7 +275,14 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 }
 
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
+	js := GetJetStream()
+	table.CurrentStage = "ShowDownAllFoldEcxeptOne"
 	table.AssignChipsToWinner(&table.Winners[0])
+	err := poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
+
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
 	return table, nil

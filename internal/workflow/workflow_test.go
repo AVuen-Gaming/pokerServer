@@ -71,13 +71,13 @@ func TestTableWorkflow(t *testing.T) {
 	// Define test tables
 	table1 := poker.Table{
 		ID:                 "1",
-		CurrentBB:          "player1",
-		CurrentSM:          "player2",
+		CurrentBB:          "player2",
+		CurrentSB:          "player1",
 		CurrentTurn:        "player8",
 		NextTurn:           "player9",
 		CurrentStage:       "dealing",
 		BBValue:            100,
-		TurnTime:           50,
+		TurnTime:           5,
 		FlopCards:          []poker.Card{},
 		TurnCard:           nil,
 		RiverCard:          nil,
@@ -85,7 +85,6 @@ func TestTableWorkflow(t *testing.T) {
 		Players: []poker.Player{
 			{ID: "player1", Chips: 1000},
 			{ID: "player2", Chips: 1000},
-			{ID: "player3", Chips: 1000},
 		},
 	}
 
