@@ -77,7 +77,7 @@ func TestTableWorkflow(t *testing.T) {
 		NextTurn:           "player9",
 		CurrentStage:       "dealing",
 		BBValue:            100,
-		TurnTime:           5,
+		TurnTime:           20,
 		FlopCards:          []poker.Card{},
 		TurnCard:           nil,
 		RiverCard:          nil,

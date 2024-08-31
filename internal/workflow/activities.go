@@ -68,7 +68,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	js := GetJetStream()
 	table.LastToRaiserIndex = -1
 	bbIndex := -1
-	table.SetSMBB()
 
 	for i, player := range table.Players {
 		if player.ID == table.CurrentBB {
@@ -84,6 +83,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	startingPlayerIndex := -1
 
 	if table.CurrentStage == "preFlop" {
+		table.SetSMBB()
 		activePlayers := 0
 		for _, player := range table.Players {
 			if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
@@ -176,12 +176,9 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				raiseOccurred = true
 				table.LastToRaiserIndex = currentIndex
 				startingPlayerIndex = currentIndex
-				player.TotalBet += action.LastBet
 				table.Players[currentIndex].TotalBet += action.LastBet
-				player.Chips -= action.LastBet
 				table.Players[currentIndex].Chips -= action.LastBet
 				table.BiggestBet = table.Players[currentIndex].TotalBet
-				player.CallAmount -= action.LastBet
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
 				table.SetTablePlayersCallAmount()
@@ -197,16 +194,11 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.PlayerActedInRound++
 				player.HasFold = true
 			case "call":
-				player.TotalBet += action.LastBet
-				player.Chips -= action.LastBet
-				player.CallAmount -= action.LastBet
 				table.Players[currentIndex].TotalBet += action.LastBet
 				table.Players[currentIndex].Chips -= action.LastBet
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
 			case "allin":
-				player.HasAllIn = true
-				player.CallAmount -= action.LastBet
 				table.Players[currentIndex].HasAllIn = true
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
