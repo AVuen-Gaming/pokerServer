@@ -280,10 +280,11 @@ func (table *Table) EvaluateHand() {
 	bestHandScore := 99999
 	table.CurrentStage = "showDown"
 
-	for _, player := range table.Players {
+	for i, player := range table.Players {
 		allCards := append(table.CommunityCards(), player.Cards...)
 		riverboatCards := make([]eval.Card, len(allCards))
 		if player.HasFold {
+			table.Players[i].Cards = nil
 			continue
 		}
 		for i, card := range allCards {
