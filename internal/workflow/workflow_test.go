@@ -71,13 +71,8 @@ func TestTableWorkflow(t *testing.T) {
 	// Define test tables
 	table1 := poker.Table{
 		ID:                 "1",
-		CurrentBB:          "player2",
-		CurrentSB:          "player1",
-		CurrentTurn:        "player8",
-		NextTurn:           "player9",
-		CurrentStage:       "dealing",
 		BBValue:            100,
-		TurnTime:           20,
+		TurnTime:           5,
 		FlopCards:          []poker.Card{},
 		TurnCard:           nil,
 		RiverCard:          nil,
@@ -85,13 +80,14 @@ func TestTableWorkflow(t *testing.T) {
 		Players: []poker.Player{
 			{ID: "player1", Chips: 1000},
 			{ID: "player2", Chips: 1000},
+			{ID: "player3", Chips: 1000},
 		},
 	}
 
 	// Start workflows
-	workflowID1 := "table-workflow-799"
+	workflowID1 := "table-workflow-797"
 
-	_, err = c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
+	we1, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,
 		TaskQueue: "poker-task-queue",
 	}, TableWorkflow, table1, cfg)
@@ -104,9 +100,24 @@ func TestTableWorkflow(t *testing.T) {
 	defer cancel()
 
 	// Check results of workflows
-	err = c.GetWorkflow(ctx, workflowID1, "").Get(ctx, nil)
+	err = we1.Get(ctx, &table1)
 	if err != nil {
 		t.Fatalf("Failed to get workflow 1 result: %v", err)
+	}
+
+	workflowID2 := "table-workflow-798"
+
+	we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
+		ID:        workflowID2,
+		TaskQueue: "poker-task-queue",
+	}, TableWorkflow, table1, cfg)
+	if err != nil {
+		t.Fatalf("Failed to start workflow 1: %v", err)
+	}
+
+	err = we2.Get(ctx, &table1)
+	if err != nil {
+		t.Fatalf("Failed to get workflow 2 result: %v", err)
 	}
 
 	c.Close()

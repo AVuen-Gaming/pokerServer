@@ -32,6 +32,7 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 
 func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	table.CurrentStage = "initRound"
+	table.SMBBTurn()
 	js := GetJetStream()
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
@@ -81,6 +82,13 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	}
 
 	startingPlayerIndex := -1
+	sbIndex := -1
+	for i, player := range table.Players {
+		if player.ID == table.CurrentSB {
+			sbIndex = i
+			break
+		}
+	}
 
 	if table.CurrentStage == "preFlop" {
 		table.SetSMBB()
@@ -94,7 +102,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		if activePlayers > 2 {
 			startingPlayerIndex = (bbIndex + 1) % len(table.Players)
 		} else {
-			startingPlayerIndex = (bbIndex + 1) % len(table.Players)
+			startingPlayerIndex = sbIndex
 		}
 	} else {
 		for i := 1; i <= len(table.Players); i++ {
@@ -261,6 +269,8 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
 	}
 
+	table.ClearPlayerActions()
+
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
 	return table, nil
@@ -274,6 +284,7 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 	if err != nil {
 		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
 	}
+	table.ClearPlayerActions()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 

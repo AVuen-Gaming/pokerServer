@@ -229,6 +229,15 @@ func (table *Table) AllPlayersExceptOneFold() {
 	}
 }
 
+func (table *Table) ClearPlayerActions() {
+	for i := range table.Players {
+		table.Players[i].CallAmount = 0
+		table.Players[i].TotalBet = 0
+		table.Players[i].LastAction = ""
+		table.Players[i].HasFold = false
+	}
+}
+
 func (table *Table) AllPlayersHaveCalled() bool {
 	for _, player := range table.Players {
 		// Ignorar jugadores que han hecho fold, están en all-in o están eliminados
@@ -423,4 +432,33 @@ func convertEvalCardsToCards(evalCards []eval.Card) []Card {
 	}
 
 	return cards
+}
+
+func (table *Table) SMBBTurn() {
+	if table.CurrentSB == "" && table.CurrentBB == "" {
+		if len(table.Players) >= 2 {
+			table.CurrentSB = table.Players[0].ID
+			table.CurrentBB = table.Players[1].ID
+		}
+		return
+	}
+
+	sbIndex := -1
+	for i, player := range table.Players {
+		if player.ID == table.CurrentSB {
+			sbIndex = i
+			break
+		}
+	}
+
+	if sbIndex == -1 {
+		sbIndex = 0
+	}
+
+	newSBIndex := (sbIndex + 1) % len(table.Players)
+	newBBIndex := (newSBIndex + 1) % len(table.Players)
+
+	table.CurrentSB = table.Players[newSBIndex].ID
+	table.CurrentBB = table.Players[newBBIndex].ID
+	return
 }

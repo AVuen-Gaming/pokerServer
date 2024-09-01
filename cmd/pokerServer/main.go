@@ -73,7 +73,7 @@ func runTestWorkflows(c client.Client, db *gorm.DB, js natsG.JetStreamContext) {
 	// Define dos tablas con diferentes jugadores
 	table1 := poker.Table{
 		CurrentBB:          "player1",
-		CurrentSM:          "player2",
+		CurrentSB:          "player2",
 		CurrentTurn:        "player3",
 		NextTurn:           "player4",
 		CurrentStage:       "dealing",
@@ -85,7 +85,7 @@ func runTestWorkflows(c client.Client, db *gorm.DB, js natsG.JetStreamContext) {
 
 	table2 := poker.Table{
 		CurrentBB:          "player6",
-		CurrentSM:          "player7",
+		CurrentSB:          "player7",
 		CurrentTurn:        "player8",
 		NextTurn:           "player9",
 		CurrentStage:       "dealing",
