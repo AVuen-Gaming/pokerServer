@@ -187,6 +187,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.Players[currentIndex].Chips -= action.LastBet
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
+				table.Players[currentIndex].HasFold = false
 			case "allin":
 				table.Players[currentIndex].HasAllIn = true
 				table.Players[currentIndex].CallAmount -= action.LastBet
@@ -215,15 +216,11 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			break
 		}
 
-		if table.PlayerActedInRound >= table.CountActivePlayers() {
-			break
-		}
-
 		if currentIndex == table.LastToRaiserIndex && !raiseOccurred {
 			break
 		}
 
-		if currentIndex == startingPlayerIndex && !raiseOccurred && table.PlayerActedInRound >= table.CountActivePlayers() {
+		if currentIndex == startingPlayerIndex && !raiseOccurred {
 			break
 		}
 
