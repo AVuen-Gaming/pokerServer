@@ -241,6 +241,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	for i := range table.Players {
 		table.Players[i].IsTurn = false
 	}
+	table.PlayerActedInRound = 0
 
 	log.Printf("Los turnos de los jugadores se han completado para la mesa ID: %s", table.ID)
 	return table, nil
