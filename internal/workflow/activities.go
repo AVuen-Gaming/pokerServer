@@ -108,7 +108,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 
 		if player.HasFold || player.HasAllIn || player.IsEliminated {
 			currentIndex = (currentIndex + 1) % len(table.Players)
-			if currentIndex == startingPlayerIndex && !raiseOccurred {
+			if currentIndex == startingPlayerIndex && !raiseOccurred && table.PlayerActedInRound >= table.CountActivePlayers() {
 				break
 			}
 			continue
@@ -188,11 +188,14 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
 				table.Players[currentIndex].HasFold = false
+				table.PlayerActedInRound++
 			case "allin":
 				table.Players[currentIndex].HasAllIn = true
 				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.TotalBet += action.LastBet
+				table.PlayerActedInRound++
 			case "check":
+				table.PlayerActedInRound++
 			}
 		case <-time.After(time.Duration(table.TurnTime) * time.Second):
 			player.IsTurn = false
