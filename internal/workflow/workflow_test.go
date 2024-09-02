@@ -85,7 +85,7 @@ func TestTableWorkflow(t *testing.T) {
 	}
 
 	// Start workflows
-	workflowID1 := "table-workflow-797"
+	workflowID1 := "table-workflow-781"
 
 	we1, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,
@@ -105,7 +105,7 @@ func TestTableWorkflow(t *testing.T) {
 		t.Fatalf("Failed to get workflow 1 result: %v", err)
 	}
 
-	workflowID2 := "table-workflow-798"
+	workflowID2 := "table-workflow-782"
 
 	we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID2,

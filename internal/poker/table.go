@@ -235,7 +235,32 @@ func (table *Table) ClearPlayerActions() {
 		table.Players[i].TotalBet = 0
 		table.Players[i].LastAction = ""
 		table.Players[i].HasFold = false
+		table.Players[i].Cards = nil
 	}
+}
+
+func (table *Table) ClearTableActions() {
+	table.AllFoldExceptOne = false
+	table.BiggestBet = 0
+	table.PlayerActedInRound = 0
+	table.Total = 0
+	table.TotalBet = 0
+	table.CurrentTurn = ""
+	table.IsPreFlop = false
+	table.LastToRaiserIndex = 0
+	table.FlopCards = []Card{}
+	table.TurnCard = nil
+	table.RiverCard = nil
+}
+
+func (table *Table) CountActivePlayers() int {
+	count := 0
+	for _, player := range table.Players {
+		if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
+			count++
+		}
+	}
+	return count
 }
 
 func (table *Table) AllPlayersHaveCalled() bool {

@@ -82,33 +82,14 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	}
 
 	startingPlayerIndex := -1
-	sbIndex := -1
-	for i, player := range table.Players {
-		if player.ID == table.CurrentSB {
-			sbIndex = i
-			break
-		}
-	}
 
 	if table.CurrentStage == "preFlop" {
 		table.SetSMBB()
-		activePlayers := 0
-		for _, player := range table.Players {
-			if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
-				activePlayers++
-			}
-		}
-
-		if activePlayers > 2 {
-			startingPlayerIndex = (bbIndex + 1) % len(table.Players)
-		} else {
-			startingPlayerIndex = sbIndex
-		}
+		startingPlayerIndex = (bbIndex + 1) % len(table.Players)
 	} else {
-		for i := 1; i <= len(table.Players); i++ {
+		for i := 1; i < len(table.Players); i++ {
 			currentIndex := (bbIndex + i) % len(table.Players)
-			player := table.Players[currentIndex]
-			if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
+			if !table.Players[currentIndex].HasFold && !table.Players[currentIndex].HasAllIn && !table.Players[currentIndex].IsEliminated {
 				startingPlayerIndex = currentIndex
 				break
 			}
@@ -191,7 +172,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.TotalBet += action.LastBet
 				table.SetTablePlayersCallAmount()
 
-				table.PlayerActedInRound = 1 // Solo el raiser ha actuado después de un raise
+				table.PlayerActedInRound = 1
 				for i := range table.Players {
 					if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
 						table.Players[i].LastAction = ""
@@ -228,14 +209,21 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 
 		table.AllPlayersExceptOneFold()
 
-		// Mover la actualización de currentIndex al final, después de todos los break checks
 		currentIndex = (currentIndex + 1) % len(table.Players)
+
+		if table.AllFoldExceptOne {
+			break
+		}
+
+		if table.PlayerActedInRound >= table.CountActivePlayers() {
+			break
+		}
 
 		if currentIndex == table.LastToRaiserIndex && !raiseOccurred {
 			break
 		}
 
-		if currentIndex == startingPlayerIndex && !raiseOccurred {
+		if currentIndex == startingPlayerIndex && !raiseOccurred && table.PlayerActedInRound >= table.CountActivePlayers() {
 			break
 		}
 
@@ -249,6 +237,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		}
 	}
 
+	// Limpiar el estado de IsTurn de todos los jugadores
 	for i := range table.Players {
 		table.Players[i].IsTurn = false
 	}
@@ -270,6 +259,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 	}
 
 	table.ClearPlayerActions()
+	table.ClearTableActions()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
@@ -285,6 +275,7 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
 	}
 	table.ClearPlayerActions()
+	table.ClearTableActions()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
