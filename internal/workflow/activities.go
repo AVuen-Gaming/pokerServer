@@ -96,6 +96,10 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		}
 	}
 
+	if table.AllPlayersAllInExceptOneAndFolded() || table.AllPlayersAllInExceptFolded() {
+		return table, nil
+	}
+
 	if startingPlayerIndex == -1 {
 		return nil, fmt.Errorf("No se encontró un jugador válido para iniciar la ronda")
 	}
@@ -191,9 +195,24 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.PlayerActedInRound++
 			case "allin":
 				table.Players[currentIndex].HasAllIn = true
-				table.Players[currentIndex].CallAmount -= action.LastBet
-				table.TotalBet += action.LastBet
+				table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
+				table.TotalBet += table.Players[currentIndex].Chips
 				table.PlayerActedInRound++
+				if table.Players[currentIndex].Chips > table.Players[currentIndex].CallAmount {
+					table.BiggestBet = table.Players[currentIndex].TotalBet
+					raiseOccurred = true
+					table.LastToRaiserIndex = currentIndex
+					startingPlayerIndex = currentIndex
+					table.PlayerActedInRound = 1
+					for i := range table.Players {
+						if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
+							table.Players[i].LastAction = ""
+						}
+					}
+					table.SetTablePlayersCallAmount()
+				}
+				table.Players[currentIndex].CallAmount -= table.Players[currentIndex].Chips
+				table.Players[currentIndex].Chips = 0
 			case "check":
 				table.PlayerActedInRound++
 			}
@@ -214,6 +233,10 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		table.AllPlayersExceptOneFold()
 
 		currentIndex = (currentIndex + 1) % len(table.Players)
+
+		if table.AllPlayersAllInExceptFolded() {
+			break
+		}
 
 		if table.AllFoldExceptOne {
 			break

@@ -210,23 +210,50 @@ func (table *Table) SetSMBB() {
 func (table *Table) AllPlayersExceptOneFold() {
 	activePlayers := []Player{}
 
-	// Recorre todos los jugadores para encontrar aquellos que no han foldeado, no están all-in y no están eliminados.
 	for _, player := range table.Players {
-		if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
+		if !player.HasFold && !player.IsEliminated {
 			activePlayers = append(activePlayers, player)
 		}
 	}
 
-	// Si solo queda un jugador activo, se le asigna como ganador y se marca la ronda como finalizada.
 	if len(activePlayers) == 1 {
 		table.Winners = activePlayers
 		table.RoundFinish = true
-		table.AllFoldExceptOne = true // Corrigiendo el nombre de la variable
-		table.CurrentTurn = ""        // No hay más turnos, ya que la ronda ha terminado
+		table.AllFoldExceptOne = true
+		table.CurrentTurn = ""
 	} else {
 		table.AllFoldExceptOne = false
 		table.RoundFinish = false
 	}
+}
+
+func (table *Table) AllPlayersAllInExceptFolded() bool {
+	for _, player := range table.Players {
+		if player.HasFold || player.IsEliminated {
+			continue
+		}
+		if !player.HasAllIn {
+			return false
+		}
+	}
+	return true
+}
+
+func (table *Table) AllPlayersAllInExceptOneAndFolded() bool {
+	countNotAllIn := 0
+
+	for _, player := range table.Players {
+		if player.HasFold || player.IsEliminated {
+			continue
+		}
+		if !player.HasAllIn {
+			countNotAllIn++
+		}
+		if countNotAllIn > 1 {
+			return false
+		}
+	}
+	return countNotAllIn == 1
 }
 
 func (table *Table) ClearPlayerActions() {
@@ -235,6 +262,7 @@ func (table *Table) ClearPlayerActions() {
 		table.Players[i].TotalBet = 0
 		table.Players[i].LastAction = ""
 		table.Players[i].HasFold = false
+		table.Players[i].HasAllIn = false
 		table.Players[i].Cards = nil
 	}
 }
