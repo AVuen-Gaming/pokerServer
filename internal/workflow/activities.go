@@ -284,6 +284,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 
 	table.ClearPlayerActions()
 	table.ClearTableActions()
+	table.EliminateAndRemovePlayersWithNoChips()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
@@ -300,6 +301,7 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 	}
 	table.ClearPlayerActions()
 	table.ClearTableActions()
+	table.EliminateAndRemovePlayersWithNoChips()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 

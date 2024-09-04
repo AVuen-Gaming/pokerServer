@@ -515,3 +515,16 @@ func (table *Table) SMBBTurn() {
 	table.CurrentBB = table.Players[newBBIndex].ID
 	return
 }
+
+func (table *Table) EliminateAndRemovePlayersWithNoChips() {
+	var remainingPlayers []Player
+
+	for _, player := range table.Players {
+		if player.Chips <= 0 {
+			player.IsEliminated = true
+		} else {
+			remainingPlayers = append(remainingPlayers, player)
+		}
+	}
+	table.Players = remainingPlayers
+}
