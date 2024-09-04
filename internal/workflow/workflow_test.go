@@ -107,17 +107,19 @@ func TestTableWorkflow(t *testing.T) {
 
 	workflowID2 := "table-workflow-782"
 
-	we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
-		ID:        workflowID2,
-		TaskQueue: "poker-task-queue",
-	}, TableWorkflow, table1, cfg)
-	if err != nil {
-		t.Fatalf("Failed to start workflow 1: %v", err)
-	}
+	for len(table1.Players) >= 2 {
+		we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
+			ID:        workflowID2,
+			TaskQueue: "poker-task-queue",
+		}, TableWorkflow, table1, cfg)
+		if err != nil {
+			t.Fatalf("Failed to start workflow 1: %v", err)
+		}
 
-	err = we2.Get(ctx, &table1)
-	if err != nil {
-		t.Fatalf("Failed to get workflow 2 result: %v", err)
+		err = we2.Get(ctx, &table1)
+		if err != nil {
+			t.Fatalf("Failed to get workflow 2 result: %v", err)
+		}
 	}
 
 	c.Close()
