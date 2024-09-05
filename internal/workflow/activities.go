@@ -33,6 +33,7 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	table.CurrentStage = "initRound"
 	table.SMBBTurn()
+	table.RemovePlayersEliminatedWithNoChips()
 	js := GetJetStream()
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
@@ -284,7 +285,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 
 	table.ClearPlayerActions()
 	table.ClearTableActions()
-	table.EliminateAndRemovePlayersWithNoChips()
+	table.SetEliminatePlayersWithNoChips()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
@@ -301,7 +302,7 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 	}
 	table.ClearPlayerActions()
 	table.ClearTableActions()
-	table.EliminateAndRemovePlayersWithNoChips()
+	table.SetEliminatePlayersWithNoChips()
 
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 

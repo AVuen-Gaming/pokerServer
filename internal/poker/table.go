@@ -171,7 +171,7 @@ func (table *Table) SetTablePlayersCallAmount() {
 	for i := range table.Players {
 		player := &table.Players[i]
 		if !player.HasFold && !player.HasAllIn && !player.IsEliminated {
-			player.CallAmount = table.BiggestBet - player.TotalBet
+			player.CallAmount = table.BiggestBet + player.TotalBet
 		}
 	}
 }
@@ -489,9 +489,15 @@ func convertEvalCardsToCards(evalCards []eval.Card) []Card {
 
 func (table *Table) SMBBTurn() {
 	if table.CurrentSB == "" && table.CurrentBB == "" {
-		if len(table.Players) >= 2 {
-			table.CurrentSB = table.Players[0].ID
-			table.CurrentBB = table.Players[1].ID
+		activePlayers := []Player{}
+		for _, player := range table.Players {
+			if !player.IsEliminated {
+				activePlayers = append(activePlayers, player)
+			}
+		}
+		if len(activePlayers) >= 2 {
+			table.CurrentSB = activePlayers[0].ID
+			table.CurrentBB = activePlayers[1].ID
 		}
 		return
 	}
@@ -508,23 +514,42 @@ func (table *Table) SMBBTurn() {
 		sbIndex = 0
 	}
 
-	newSBIndex := (sbIndex + 1) % len(table.Players)
-	newBBIndex := (newSBIndex + 1) % len(table.Players)
+	newSBIndex := table.getNextActivePlayerIndex(sbIndex)
+	newBBIndex := table.getNextActivePlayerIndex(newSBIndex)
 
-	table.CurrentSB = table.Players[newSBIndex].ID
-	table.CurrentBB = table.Players[newBBIndex].ID
-	return
+	if newSBIndex != -1 {
+		if newBBIndex == newSBIndex {
+			newBBIndex = table.getNextActivePlayerIndex(newBBIndex)
+		}
+		table.CurrentSB = table.Players[newSBIndex].ID
+		table.CurrentBB = table.Players[newBBIndex].ID
+	}
 }
 
-func (table *Table) EliminateAndRemovePlayersWithNoChips() {
-	var remainingPlayers []Player
+func (table *Table) SetEliminatePlayersWithNoChips() {
+	for i := range table.Players {
+		if table.Players[i].Chips <= 0 {
+			table.Players[i].IsEliminated = true
+		}
+	}
+}
 
+func (table *Table) RemovePlayersEliminatedWithNoChips() {
+	var remainingPlayers []Player
 	for _, player := range table.Players {
-		if player.Chips <= 0 {
-			player.IsEliminated = true
-		} else {
+		if !player.IsEliminated {
 			remainingPlayers = append(remainingPlayers, player)
 		}
 	}
 	table.Players = remainingPlayers
+}
+
+func (table *Table) getNextActivePlayerIndex(startIndex int) int {
+	for i := 1; i <= len(table.Players); i++ {
+		currentIndex := (startIndex + i) % len(table.Players)
+		if !table.Players[currentIndex].IsEliminated {
+			return currentIndex
+		}
+	}
+	return -1
 }

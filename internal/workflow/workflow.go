@@ -20,6 +20,10 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 		return table, err
 	}
 
+	if len(table.Players) < 2 { //cambiar por min players de table
+		return table, nil
+	}
+
 	err = workflow.ExecuteActivity(ctx, DealCardsActivity, &table, config).Get(ctx, &SecTable)
 	if err != nil {
 		return table, err
