@@ -34,6 +34,9 @@ func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config)
 	table.CurrentStage = "initRound"
 	table.SMBBTurn()
 	table.RemovePlayersEliminatedWithNoChips()
+	if len(table.Players) < 2 {
+		table.CurrentStage = "finishTable"
+	}
 	js := GetJetStream()
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
