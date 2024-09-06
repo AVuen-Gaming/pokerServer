@@ -183,20 +183,38 @@ func (table *Table) SetSMBB() {
 	for i := range table.Players {
 		player := &table.Players[i]
 		if player.ID == table.CurrentSB {
-			smPlayer = player
-			table.Players[i].Chips -= smBet
-			table.Players[i].TotalBet += smBet
-			table.Players[i].LastAction = "SB"
-			table.Players[i].IsSB = true
-			table.TotalBet += smBet
+			if table.Players[i].Chips <= smBet {
+				smPlayer = player
+				table.Players[i].LastAction = "SB"
+				table.Players[i].IsSB = true
+				table.Players[i].TotalBet += table.Players[i].Chips
+				table.Players[i].HasAllIn = true
+				table.Players[i].Chips = 0
+			} else {
+				smPlayer = player
+				table.Players[i].Chips -= smBet
+				table.Players[i].TotalBet += smBet
+				table.Players[i].LastAction = "SB"
+				table.Players[i].IsSB = true
+				table.TotalBet += smBet
+			}
 		} else if player.ID == table.CurrentBB {
-			bbPlayer = player
-			table.Players[i].Chips -= bbBet
-			table.Players[i].TotalBet += bbBet
-			table.Players[i].LastAction = "BB"
-			table.Players[i].IsBB = true
-			table.BiggestBet = bbBet
-			table.TotalBet += bbBet
+			if table.Players[i].Chips <= bbBet {
+				bbPlayer = player
+				table.Players[i].LastAction = "BB"
+				table.Players[i].IsBB = true
+				table.Players[i].TotalBet += table.Players[i].Chips
+				table.Players[i].HasAllIn = true
+				table.Players[i].Chips = 0
+			} else {
+				bbPlayer = player
+				table.Players[i].Chips -= bbBet
+				table.Players[i].TotalBet += bbBet
+				table.Players[i].LastAction = "BB"
+				table.Players[i].IsBB = true
+				table.BiggestBet = bbBet
+				table.TotalBet += bbBet
+			}
 		}
 	}
 
