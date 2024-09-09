@@ -72,20 +72,20 @@ func TestTableWorkflow(t *testing.T) {
 	table1 := poker.Table{
 		ID:                 "1",
 		BBValue:            100,
-		TurnTime:           5,
+		TurnTime:           3,
 		FlopCards:          []poker.Card{},
 		TurnCard:           nil,
 		RiverCard:          nil,
 		TotalBetIndividual: make(map[string]int),
 		Players: []poker.Player{
-			{ID: "player1", Chips: 1000},
-			{ID: "player2", Chips: 1000},
+			{ID: "player1", Chips: 100},
+			{ID: "player2", Chips: 100},
 			{ID: "player3", Chips: 1000},
 		},
 	}
 
 	// Start workflows
-	workflowID1 := "table-workflow-781"
+	workflowID1 := "table-workflow-798"
 
 	we1, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,
@@ -105,7 +105,7 @@ func TestTableWorkflow(t *testing.T) {
 		t.Fatalf("Failed to get workflow 1 result: %v", err)
 	}
 
-	workflowID2 := "table-workflow-782"
+	workflowID2 := "table-workflow-799"
 
 	for len(table1.Players) >= 2 {
 		we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{

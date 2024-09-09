@@ -99,7 +99,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			}
 		}
 	}
-
 	if table.AllPlayersAllInExceptOneAndFolded() || table.AllPlayersAllInExceptFolded() {
 		return table, nil
 	}
@@ -199,11 +198,15 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.PlayerActedInRound++
 			case "allin":
 				table.Players[currentIndex].HasAllIn = true
-				table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
+				//table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
+				biggestBet := table.Players[currentIndex].TotalBet + table.Players[currentIndex].Chips
 				table.TotalBet += table.Players[currentIndex].Chips
+
+				table.CreateSidePots()
+
 				table.PlayerActedInRound++
 				if table.Players[currentIndex].Chips > table.Players[currentIndex].CallAmount {
-					table.BiggestBet = table.Players[currentIndex].TotalBet
+					table.BiggestBet = biggestBet
 					raiseOccurred = true
 					table.LastToRaiserIndex = currentIndex
 					startingPlayerIndex = currentIndex
@@ -221,13 +224,13 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.PlayerActedInRound++
 			}
 		case <-time.After(time.Duration(table.TurnTime) * time.Second):
-			player.IsTurn = false
+			table.Players[currentIndex].IsTurn = false
 			log.Printf("El tiempo de turno para el jugador %s ha expirado", player.ID)
-			player.LastAction = "fold"
-			player.HasFold = true
-			if player.CallAmount <= 0 {
-				player.LastAction = "check"
-				player.HasFold = false
+			table.Players[currentIndex].LastAction = "fold"
+			table.Players[currentIndex].HasFold = true
+			if table.Players[currentIndex].CallAmount <= 0 {
+				table.Players[currentIndex].LastAction = "check"
+				table.Players[currentIndex].HasFold = false
 			}
 			table.PlayerActedInRound++
 		case <-ctx.Done():
@@ -264,7 +267,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		}
 	}
 
-	// Limpiar el estado de IsTurn de todos los jugadores
 	for i := range table.Players {
 		table.Players[i].IsTurn = false
 	}
@@ -277,7 +279,11 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	js := GetJetStream()
 	table.EvaluateHand()
-	table.AssignChipsToWinner(&table.Winners[0])
+	winnersPtr := make([]*poker.Player, len(table.Winners)) //TODO: error check
+	for i := range table.Winners {
+		winnersPtr[i] = &table.Winners[i]
+	}
+	table.AssignChipsToWinners(winnersPtr)
 
 	table.CurrentStage = "ShowDown"
 
@@ -298,7 +304,11 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	js := GetJetStream()
 	table.CurrentStage = "ShowDownAllFoldExceptOne"
-	table.AssignChipsToWinner(&table.Winners[0])
+	winnersPtr := make([]*poker.Player, len(table.Winners))
+	for i := range table.Winners {
+		winnersPtr[i] = &table.Winners[i]
+	}
+	table.AssignChipsToWinners(winnersPtr)
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
 		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
