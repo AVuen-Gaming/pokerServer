@@ -18,10 +18,8 @@ var (
 	once              sync.Once
 )
 
-// StartWorker initializes the Temporal worker and required resources.
 func StartWorker(cfg *config.Config) {
 	once.Do(func() {
-		// Conectar a NATS y crear JetStream context
 		natsConn, err := nats.Connect(cfg.NATS.Host)
 		if err != nil {
 			log.Fatalf("Failed to connect to NATS: %v", err)
@@ -33,7 +31,6 @@ func StartWorker(cfg *config.Config) {
 		}
 		jetStreamInstance = js
 
-		// Inicializar la base de datos
 		dbConn, err := db.InitDB(&cfg.Database)
 		if err != nil {
 			log.Fatalf("Failed to initialize database: %v", err)
@@ -41,16 +38,13 @@ func StartWorker(cfg *config.Config) {
 		dbInstance = dbConn
 	})
 
-	// Crear un cliente Temporal
 	c, err := client.Dial(client.Options{
 		HostPort: cfg.Temporal.HostPort,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Temporal client: %v", err)
 	}
-	// NOTA: No cerramos la conexión aquí con defer
 
-	// Register Activities and Workflow
 	w := worker.New(c, "poker-task-queue", worker.Options{})
 	w.RegisterWorkflow(TableWorkflow)
 	w.RegisterActivity(DealPreFlop)
@@ -61,7 +55,6 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterActivity(ShowDown)
 	w.RegisterActivity(ShowDownAllFoldExecptOne)
 
-	// Start worker
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
 			log.Fatalf("Failed to start worker: %v", err)
@@ -69,12 +62,10 @@ func StartWorker(cfg *config.Config) {
 	}()
 }
 
-// GetJetStream returns the singleton instance of JetStream
 func GetJetStream() nats.JetStreamContext {
 	return jetStreamInstance
 }
 
-// GetDB returns the singleton instance of the database
 func GetDB() *gorm.DB {
 	return dbInstance
 }

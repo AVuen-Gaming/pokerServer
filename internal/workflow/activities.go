@@ -175,8 +175,9 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 				table.Players[currentIndex].TotalBet += action.LastBet
 				table.Players[currentIndex].Chips -= action.LastBet
 				table.BiggestBet = table.Players[currentIndex].TotalBet
+				table.ManageSidePots()
 				table.Players[currentIndex].CallAmount -= action.LastBet
-				table.TotalBet += action.LastBet
+				//table.TotalBet += action.LastBet
 				table.SetTablePlayersCallAmount()
 
 				table.PlayerActedInRound = 1
@@ -192,25 +193,26 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			case "call":
 				table.Players[currentIndex].TotalBet += action.LastBet
 				table.Players[currentIndex].Chips -= action.LastBet
-				table.Players[currentIndex].CallAmount -= action.LastBet
-				table.TotalBet += action.LastBet
+				//table.TotalBet += action.LastBet
 				table.Players[currentIndex].HasFold = false
+				table.ManageSidePots()
+				table.Players[currentIndex].CallAmount -= action.LastBet
 				table.PlayerActedInRound++
 			case "allin":
 				table.Players[currentIndex].HasAllIn = true
-				//table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
-				biggestBet := table.Players[currentIndex].TotalBet + table.Players[currentIndex].Chips
-				table.TotalBet += table.Players[currentIndex].Chips
 
-				table.CreateSidePots()
+				table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
 
-				table.PlayerActedInRound++
-				if table.Players[currentIndex].Chips > table.Players[currentIndex].CallAmount {
+				biggestBet := table.Players[currentIndex].TotalBet
+				table.Players[currentIndex].Chips = 0
+
+				if table.Players[currentIndex].TotalBet > table.Players[currentIndex].CallAmount {
 					table.BiggestBet = biggestBet
 					raiseOccurred = true
 					table.LastToRaiserIndex = currentIndex
 					startingPlayerIndex = currentIndex
 					table.PlayerActedInRound = 1
+
 					for i := range table.Players {
 						if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
 							table.Players[i].LastAction = ""
@@ -218,8 +220,11 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 					}
 					table.SetTablePlayersCallAmount()
 				}
-				table.Players[currentIndex].CallAmount -= table.Players[currentIndex].Chips
-				table.Players[currentIndex].Chips = 0
+
+				table.ManageSidePots()
+
+				table.Players[currentIndex].CallAmount -= table.Players[currentIndex].TotalBet
+
 			case "check":
 				table.PlayerActedInRound++
 			}
@@ -237,6 +242,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			return nil, ctx.Err()
 		}
 
+		table.UpdateTotalBet()
 		table.AllPlayersExceptOneFold()
 
 		currentIndex = (currentIndex + 1) % len(table.Players)
@@ -265,6 +271,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 		if table.AllFoldExceptOne || (table.PlayerActedInRound == len(table.Players)) {
 			break
 		}
+
 	}
 
 	for i := range table.Players {
@@ -279,11 +286,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	js := GetJetStream()
 	table.EvaluateHand()
-	winnersPtr := make([]*poker.Player, len(table.Winners)) //TODO: error check
-	for i := range table.Winners {
-		winnersPtr[i] = &table.Winners[i]
-	}
-	table.AssignChipsToWinners(winnersPtr)
+	table.AssignChipsToWinners()
 
 	table.CurrentStage = "ShowDown"
 
@@ -308,7 +311,7 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 	for i := range table.Winners {
 		winnersPtr[i] = &table.Winners[i]
 	}
-	table.AssignChipsToWinners(winnersPtr)
+	table.AssignChipsToWinners()
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
 		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)

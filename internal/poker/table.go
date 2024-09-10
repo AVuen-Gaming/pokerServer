@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"sort"
 
 	"github.com/alexclewontin/riverboat/eval"
 	"github.com/nats-io/nats.go"
@@ -24,6 +23,7 @@ type PlayerCards struct {
 type SidePot struct {
 	Amount  int
 	Players []*Player
+	Winner  []*Player
 }
 
 type Table struct {
@@ -194,21 +194,21 @@ func (table *Table) SetSMBB() {
 				smPlayer = player
 				table.Players[i].LastAction = "SB"
 				table.Players[i].IsSB = true
-				//table.Players[i].TotalBet += table.Players[i].Chips
+				table.Players[i].TotalBet += table.Players[i].Chips
 				table.Players[i].HasAllIn = true
 				if table.Players[i].Chips > table.BiggestBet {
 					table.BiggestBet = smBet
 				}
 				table.Players[i].Chips = 0
-				table.CreateSidePots()
 			} else {
 				smPlayer = player
 				table.Players[i].Chips -= smBet
 				table.Players[i].TotalBet += smBet
 				table.Players[i].LastAction = "SB"
 				table.Players[i].IsSB = true
-				table.TotalBet += smBet
+				//table.TotalBet += smBet
 			}
+			table.ManageSidePots()
 		} else if player.ID == table.CurrentBB {
 			if table.Players[i].Chips <= bbBet {
 				bbPlayer = player
@@ -220,7 +220,6 @@ func (table *Table) SetSMBB() {
 					table.BiggestBet = bbBet
 				}
 				table.Players[i].Chips = 0
-				table.CreateSidePots()
 			} else {
 				bbPlayer = player
 				table.Players[i].Chips -= bbBet
@@ -228,8 +227,9 @@ func (table *Table) SetSMBB() {
 				table.Players[i].LastAction = "BB"
 				table.Players[i].IsBB = true
 				table.BiggestBet = bbBet
-				table.TotalBet += bbBet
+				//table.TotalBet += bbBet
 			}
+			table.ManageSidePots()
 		}
 	}
 
@@ -359,44 +359,31 @@ func (table *Table) FindPlayerByID(playerID string) int {
 	return -1
 }
 
-func (table *Table) AssignChipsToWinners(winners []*Player) {
-	if len(winners) == 0 {
-		return
-	}
+func (table *Table) AssignChipsToWinners() {
 
-	for _, sidePot := range table.SidePots {
-		var potWinners []*Player
-
-		for _, winner := range winners {
-			for _, player := range sidePot.Players {
-				if player.ID == winner.ID {
-					potWinners = append(potWinners, winner)
-					break
-				}
-			}
-		}
-
-		if len(potWinners) > 0 {
-			if len(potWinners) == 1 {
-				winnerIndex := table.FindPlayerByID(potWinners[0].ID)
+	for i, sidePot := range table.SidePots {
+		if len(sidePot.Winner) > 0 {
+			if len(sidePot.Winner) == 1 {
+				winner := sidePot.Winner[0]
+				winnerIndex := table.FindPlayerByID(winner.ID)
 				if winnerIndex != -1 {
 					table.Players[winnerIndex].Chips += sidePot.Amount
 				}
 			} else {
-				share := sidePot.Amount / len(potWinners)
-				for _, winner := range potWinners {
+				share := sidePot.Amount / len(sidePot.Winner)
+				for _, winner := range sidePot.Winner {
 					winnerIndex := table.FindPlayerByID(winner.ID)
 					if winnerIndex != -1 {
 						table.Players[winnerIndex].Chips += share
 					}
 				}
 			}
-			sidePot.Amount = 0
+			table.SidePots[i].Amount = 0
 		}
 	}
 
-	if table.TotalBet > 0 {
-		winnerIndex := table.FindPlayerByID(winners[0].ID)
+	if len(table.Winners) == 1 && table.TotalBet > 0 {
+		winnerIndex := table.FindPlayerByID(table.Winners[0].ID)
 		if winnerIndex != -1 {
 			table.Players[winnerIndex].Chips += table.TotalBet
 		}
@@ -406,48 +393,27 @@ func (table *Table) AssignChipsToWinners(winners []*Player) {
 	table.SidePots = nil
 }
 
-func (table *Table) AssignChipsToWinner(winner *Player) {
-	if winner == nil {
-		return
-	}
-
-	for i := range table.Players {
-		if table.Players[i].ID == winner.ID {
-			table.Players[i].Chips += table.TotalBet
-			table.TotalBet = 0
-			return
-		}
-	}
-}
-
-func (table *Table) CreateSidePots() {
+func (table *Table) ManageSidePots() {
 	table.SidePots = []SidePot{}
 
-	sort.SliceStable(table.Players, func(i, j int) bool {
-		return table.Players[i].TotalBet < table.Players[j].TotalBet
-	})
-
-	remainingPlayers := len(table.Players)
-
-	bets := make(map[*Player]int)
+	playerBets := make(map[*Player]int)
 	for i := range table.Players {
 		player := &table.Players[i]
-		if !player.HasFold {
-			bets[player] = player.TotalBet
-		} else {
-			bets[player] = 0
-		}
+		playerBets[player] = player.TotalBet
 	}
 
-	for remainingPlayers > 0 {
-		minBet := -1
-		for _, bet := range bets {
-			if bet > 0 && (minBet == -1 || bet < minBet) {
-				minBet = bet
+	for {
+		minAllInBet := -1
+		allInPlayerFound := false
+
+		for player, bet := range playerBets {
+			if player.HasAllIn && bet > 0 && (minAllInBet == -1 || bet < minAllInBet) {
+				minAllInBet = bet
+				allInPlayerFound = true
 			}
 		}
 
-		if minBet == -1 {
+		if !allInPlayerFound {
 			break
 		}
 
@@ -456,32 +422,47 @@ func (table *Table) CreateSidePots() {
 			Players: []*Player{},
 		}
 
-		for player, bet := range bets {
-			if bet >= minBet {
-				currentPot.Amount += minBet
-				bets[player] -= minBet
-				if !player.HasFold {
-					currentPot.Players = append(currentPot.Players, player)
+		for player, bet := range playerBets {
+			if !player.HasFold && bet > 0 {
+				if bet >= minAllInBet {
+					currentPot.Amount += minAllInBet
+					playerBets[player] -= minAllInBet
+				} else {
+					currentPot.Amount += bet
+					playerBets[player] = 0
 				}
-			} else if bet > 0 {
-				currentPot.Amount += bet
-				bets[player] = 0
-				if !player.HasFold {
-					currentPot.Players = append(currentPot.Players, player)
-				}
+				currentPot.Players = append(currentPot.Players, player)
 			}
 		}
 
-		table.SidePots = append(table.SidePots, currentPot)
+		if len(currentPot.Players) > 0 {
+			table.SidePots = append(table.SidePots, currentPot)
+		}
 
-		remainingPlayers = 0
-		for _, bet := range bets {
-			if bet > 0 {
-				remainingPlayers++
-			}
+		activeBets := 0
+		for _, bet := range playerBets {
+			activeBets += bet
+		}
+
+		if activeBets == 0 {
+			break
 		}
 	}
 
+	activePot := SidePot{
+		Amount:  0,
+		Players: []*Player{},
+	}
+	for player, bet := range playerBets {
+		if bet > 0 {
+			activePot.Amount += bet
+			activePot.Players = append(activePot.Players, player)
+		}
+	}
+
+	if activePot.Amount > 0 {
+		table.SidePots = append(table.SidePots, activePot)
+	}
 }
 
 func (table *Table) EvaluateHand() {
@@ -493,10 +474,14 @@ func (table *Table) EvaluateHand() {
 	}
 	table.CurrentStage = "showDown"
 
-	var bestHandScore int = 99999
-	var winners []*Player
+	var totalBetWinners []*Player
+	var bestTotalBetHandScore int = -1
 
-	for i, player := range table.Players {
+	playersCopy := make([]Player, len(table.Players))
+	copy(playersCopy, table.Players)
+
+	for i := range playersCopy {
+		player := &playersCopy[i]
 		if player.HasFold || player.IsEliminated {
 			continue
 		}
@@ -504,10 +489,10 @@ func (table *Table) EvaluateHand() {
 		allCards := append(table.CommunityCards(), player.Cards...)
 		riverboatCards := make([]eval.Card, len(allCards))
 
-		for i, card := range allCards {
+		for j, card := range allCards {
 			suitAbbr := suitMap[card.Suit]
 			cardStr := fmt.Sprintf("%v%v", card.Value, suitAbbr)
-			riverboatCards[i] = eval.MustParseCardString(cardStr)
+			riverboatCards[j] = eval.MustParseCardString(cardStr)
 		}
 
 		var bestFive []eval.Card
@@ -520,27 +505,83 @@ func (table *Table) EvaluateHand() {
 			bestFive, _ = eval.BestFiveOfSeven(riverboatCards[0], riverboatCards[1], riverboatCards[2], riverboatCards[3], riverboatCards[4], riverboatCards[5], riverboatCards[6])
 		}
 
-		sort.Slice(bestFive, func(i, j int) bool {
-			rankI := int((bestFive[i] >> 8) & 0xF)
-			rankJ := int((bestFive[j] >> 8) & 0xF)
-			return rankI < rankJ
-		})
-
 		handScore := eval.HandValue(bestFive[0], bestFive[1], bestFive[2], bestFive[3], bestFive[4])
 
-		if handScore > bestHandScore {
-			winners = []*Player{&table.Players[i]}
-			bestHandScore = handScore
-		} else if handScore == bestHandScore {
-			winners = append(winners, &table.Players[i])
+		if handScore > bestTotalBetHandScore {
+			totalBetWinners = []*Player{player}
+			bestTotalBetHandScore = handScore
+		} else if handScore == bestTotalBetHandScore {
+			totalBetWinners = append(totalBetWinners, player)
 		}
 
-		table.Players[i].HandScore = handScore
+		player.HandScore = handScore
 	}
 
-	table.Winners = make([]Player, len(winners))
-	for i := range winners {
-		table.Winners[i] = *winners[i]
+	if len(totalBetWinners) > 0 {
+		amountPerWinner := table.TotalBet / len(totalBetWinners)
+		for _, player := range totalBetWinners {
+			player.Winnings += amountPerWinner
+		}
+	} else {
+		log.Println("Error: No hay ganadores en el totalBet.")
+	}
+
+	for i := range table.SidePots {
+		sidePot := &table.SidePots[i]
+
+		if len(sidePot.Players) == 1 {
+			winner := sidePot.Players[0]
+			table.SidePots[i].Winner = []*Player{winner}
+			winner.Winnings += sidePot.Amount
+			continue
+		}
+
+		var bestSidePotHandScore int = -1
+		var sidePotWinner *Player
+
+		for _, player := range sidePot.Players {
+			if player.HasFold || player.IsEliminated {
+				continue
+			}
+
+			allCards := append(table.CommunityCards(), player.Cards...)
+			riverboatCards := make([]eval.Card, len(allCards))
+
+			for j, card := range allCards {
+				suitAbbr := suitMap[card.Suit]
+				cardStr := fmt.Sprintf("%v%v", card.Value, suitAbbr)
+				riverboatCards[j] = eval.MustParseCardString(cardStr)
+			}
+
+			var bestFive []eval.Card
+			switch len(riverboatCards) {
+			case 5:
+				bestFive = riverboatCards
+			case 6:
+				bestFive, _ = eval.BestFiveOfSix(riverboatCards[0], riverboatCards[1], riverboatCards[2], riverboatCards[3], riverboatCards[4], riverboatCards[5])
+			case 7:
+				bestFive, _ = eval.BestFiveOfSeven(riverboatCards[0], riverboatCards[1], riverboatCards[2], riverboatCards[3], riverboatCards[4], riverboatCards[5], riverboatCards[6])
+			}
+
+			handScore := eval.HandValue(bestFive[0], bestFive[1], bestFive[2], bestFive[3], bestFive[4])
+
+			if handScore > bestSidePotHandScore {
+				bestSidePotHandScore = handScore
+				sidePotWinner = player
+			}
+		}
+
+		if sidePotWinner != nil {
+			table.SidePots[i].Winner = []*Player{sidePotWinner}
+			sidePotWinner.Winnings += sidePot.Amount
+		} else {
+			table.SidePots[i].Winner = nil
+		}
+	}
+
+	table.Winners = make([]Player, len(totalBetWinners))
+	for i, winner := range totalBetWinners {
+		table.Winners[i] = *winner
 	}
 
 	if len(table.Winners) == 0 {
@@ -591,6 +632,15 @@ func convertCardToEvalCard(card Card) eval.Card {
 	fmt.Printf("Carta convertida: %d (rango: %d, palo: %d)\n", evalCard, rank, suit)
 
 	return evalCard
+}
+
+func (table *Table) UpdateTotalBet() {
+	total := table.TotalBet
+	for _, sidePot := range table.SidePots {
+		total += sidePot.Amount
+	}
+
+	table.Total = total
 }
 
 func (table *Table) AssignPlayerCardsFromSecTable(secTable *Table) {
