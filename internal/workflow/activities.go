@@ -13,6 +13,17 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+const (
+	StagePreFlop                  = "preFlop"
+	StageInitRound                = "initRound"
+	StageFinishTable              = "finishTable"
+	StageFlop                     = "flop"
+	StageTurn                     = "turn"
+	StageRiver                    = "river"
+	StageShowDown                 = "showDown"
+	StageShowDownAllFoldExceptOne = "showDownAllFoldExceptOne"
+)
+
 func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	log.Printf("Starting DealCardsActivity with table ID: %s", table.ID)
 	table.DealCards()
@@ -25,17 +36,18 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 		}
 	}
 	time.Sleep(2 * time.Second)
+	table.CurrentStage = StagePreFlop
 
 	log.Printf("Completed DealCardsActivity for table ID: %s", table.ID)
 	return table, nil
 }
 
 func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = "initRound"
+	table.CurrentStage = StageInitRound
 	table.SMBBTurn()
 	table.RemovePlayersEliminatedWithNoChips()
 	if len(table.Players) < 2 {
-		table.CurrentStage = "finishTable"
+		table.CurrentStage = StageFinishTable
 	}
 	js := GetJetStream()
 	err := poker.SendPTableUpdateToNATS(js, table)
@@ -49,21 +61,21 @@ func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config)
 }
 
 func DealFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = "flop"
+	table.CurrentStage = StageFlop
 	time.Sleep(2 * time.Second)
 
 	return table, nil
 }
 
 func DealTurn(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = "turn"
+	table.CurrentStage = StageTurn
 	time.Sleep(2 * time.Second)
 
 	return table, nil
 }
 
 func DealRiver(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = "river"
+	table.CurrentStage = StageRiver
 	time.Sleep(2 * time.Second)
 
 	return table, nil
@@ -87,7 +99,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 
 	startingPlayerIndex := -1
 
-	if table.CurrentStage == "preFlop" {
+	if table.CurrentStage == StagePreFlop {
 		table.SetSMBB()
 		startingPlayerIndex = (bbIndex + 1) % len(table.Players)
 	} else {
@@ -288,7 +300,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 	table.EvaluateHand()
 	table.AssignChipsToWinners()
 
-	table.CurrentStage = "ShowDown"
+	table.CurrentStage = StageShowDown
 
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
@@ -306,7 +318,7 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	js := GetJetStream()
-	table.CurrentStage = "ShowDownAllFoldExceptOne"
+	table.CurrentStage = StageShowDownAllFoldExceptOne
 	winnersPtr := make([]*poker.Player, len(table.Winners))
 	for i := range table.Winners {
 		winnersPtr[i] = &table.Winners[i]
