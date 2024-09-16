@@ -643,6 +643,16 @@ func (table *Table) UpdateTotalBet() {
 	table.Total = total
 }
 
+func (table *Table) UpdateTotalBetForFold() {
+	total := table.TotalBet
+	for _, sidePot := range table.SidePots {
+		total += sidePot.Amount
+		sidePot.Amount = 0
+	}
+
+	table.TotalBet = total
+}
+
 func (table *Table) AssignPlayerCardsFromSecTable(secTable *Table) {
 	playerCardsMap := make(map[string][]Card)
 	for _, player := range secTable.Players {

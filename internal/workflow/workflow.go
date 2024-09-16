@@ -28,7 +28,7 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	if err != nil {
 		return table, err
 	}
-	table.CurrentStage = "preFlop"
+	table.CurrentStage = StagePreFlop
 
 	err = workflow.ExecuteActivity(ctx, HandleTurns, &table).Get(ctx, &table)
 	if err != nil {
