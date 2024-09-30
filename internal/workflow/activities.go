@@ -17,6 +17,8 @@ const (
 	StagePreFlop                  = "preFlop"
 	StageInitRound                = "initRound"
 	StageFinishTable              = "finishTable"
+	StageFinishTournament         = "finishTorunament"
+	StageSwitchingPlayer          = "switchingPlayer"
 	StageFlop                     = "flop"
 	StageTurn                     = "turn"
 	StageRiver                    = "river"
@@ -30,6 +32,7 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 
 	js := GetJetStream()
 	for _, player := range table.Players {
+		player.CurrentTable = table.ID
 		if err := poker.SendPlayerUpdateToNATS(js, table.ID, player); err != nil {
 			log.Printf("Error sending player update to NATS for player ID %s: %v", player.ID, err)
 			continue
@@ -259,10 +262,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 
 		currentIndex = (currentIndex + 1) % len(table.Players)
 
-		if table.AllPlayersAllInExceptFolded() {
-			break
-		}
-
 		if table.AllFoldExceptOne {
 			break
 		}
@@ -280,7 +279,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			raiseOccurred = false
 		}
 
-		if table.AllFoldExceptOne || (table.PlayerActedInRound == len(table.Players)) {
+		if table.PlayerActedInRound == len(table.Players) {
 			break
 		}
 
@@ -314,6 +313,31 @@ func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
 	return table, nil
+}
+
+func Reshuffle(ctx context.Context, tables []poker.Table, updatedTable poker.Table, config *config.Config) ([]poker.Table, error) {
+	js := GetJetStream()
+	tables = poker.MovePlayers(tables, updatedTable, js)
+
+	return tables, nil
+}
+
+func CheckLastTable(ctx context.Context, tables []poker.Table, updatedTable poker.Table, config *config.Config) (bool, error) {
+	js := GetJetStream()
+	poker.OnlyOneTableRemains(tables)
+	if tables[0].LastTable {
+		tables[0].TableEnd()
+		if tables[0].TableEnds {
+			tables[0].CurrentStage = StageFinishTournament
+			err := poker.SendPTableUpdateToNATS(js, &tables[0])
+			if err != nil {
+				return true, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+			}
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
@@ -361,4 +385,42 @@ func countActivePlayers(players []poker.Player) int {
 		}
 	}
 	return count
+}
+
+func tableExists(tables []poker.Table, tableID string) bool {
+	for _, table := range tables {
+		if table.ID == tableID {
+			return true
+		}
+	}
+	return false
+}
+
+func updateTableFromUpdatedTable(originalTable poker.Table, updatedTable poker.Table) poker.Table {
+	playerMap := make(map[string]*poker.Player)
+	for i := range originalTable.Players {
+		playerMap[originalTable.Players[i].ID] = &originalTable.Players[i]
+	}
+
+	for _, updatedPlayer := range updatedTable.Players {
+		if player, exists := playerMap[updatedPlayer.ID]; exists {
+			player.Chips = updatedPlayer.Chips
+			// posiblemente se necesite agregar otros campos
+		} else {
+			originalTable.Players = append(originalTable.Players, updatedPlayer)
+		}
+	}
+
+	for i := len(originalTable.Players) - 1; i >= 0; i-- {
+		if _, exists := playerMap[originalTable.Players[i].ID]; !exists {
+			originalTable.Players = append(originalTable.Players[:i], originalTable.Players[i+1:]...)
+		}
+	}
+	//mover a constructor
+	//ver posibles campos extras necesarios
+	originalTable.Round = updatedTable.Round
+	originalTable.CurrentBB = updatedTable.CurrentBB
+	originalTable.CurrentSB = updatedTable.CurrentSB
+
+	return originalTable
 }

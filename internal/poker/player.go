@@ -29,6 +29,8 @@ type Player struct {
 	HandDescription  string
 	HandScore        int
 	Winnings         int
+	CurrentTable     string
+	SwitchingTable   bool
 }
 
 func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player) error {

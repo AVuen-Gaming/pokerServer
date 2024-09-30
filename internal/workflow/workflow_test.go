@@ -49,15 +49,20 @@ func TestTableWorkflow(t *testing.T) {
 	})
 	workerOptions := worker.Options{}
 	w := worker.New(c, "poker-task-queue", workerOptions)
+	w.RegisterWorkflow(PlayerWorkflow)
+	w.RegisterWorkflow(RoundWorkflow)
 	w.RegisterWorkflow(TableWorkflow)
+	w.RegisterWorkflow(TournamentWorkflow)
 	w.RegisterActivity(DealPreFlop)
 	w.RegisterActivity(DealCardsActivity)
 	w.RegisterActivity(DealFlop)
+	w.RegisterActivity(Reshuffle)
 	w.RegisterActivity(DealTurn)
 	w.RegisterActivity(DealRiver)
 	w.RegisterActivity(HandleTurns)
 	w.RegisterActivity(ShowDown)
 	w.RegisterActivity(ShowDownAllFoldExecptOne)
+	w.RegisterActivity(CheckLastTable)
 	// Start worker
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
@@ -72,25 +77,51 @@ func TestTableWorkflow(t *testing.T) {
 	table1 := poker.Table{
 		ID:                 "1",
 		BBValue:            100,
-		TurnTime:           3,
+		TurnTime:           7,
+		Round:              0,
+		MaxPlayers:         8,
+		MinPlayers:         3,
 		FlopCards:          []poker.Card{},
 		TurnCard:           nil,
 		RiverCard:          nil,
 		TotalBetIndividual: make(map[string]int),
 		Players: []poker.Player{
-			{ID: "player1", Chips: 100},
-			{ID: "player2", Chips: 100},
-			{ID: "player3", Chips: 1000},
+			{ID: "player1", Chips: 1000},
+			{ID: "player2", Chips: 500},
+			{ID: "player3", Chips: 300},
+			{ID: "player4", Chips: 300},
+			{ID: "player5", Chips: 300},
 		},
 	}
 
+	table2 := poker.Table{
+		ID:                 "2",
+		BBValue:            200,
+		TurnTime:           3,
+		Round:              0,
+		MaxPlayers:         8,
+		MinPlayers:         3,
+		FlopCards:          []poker.Card{},
+		TurnCard:           nil,
+		RiverCard:          nil,
+		TotalBetIndividual: make(map[string]int),
+		Players: []poker.Player{
+			{ID: "player6", Chips: 1000},
+			{ID: "player7", Chips: 500},
+			{ID: "player8", Chips: 300},
+		},
+	}
+
+	// Create an array of tables
+	tables := []poker.Table{table1, table2}
+
 	// Start workflows
-	workflowID1 := "table-workflow-798"
+	workflowID1 := "tournament-workflow-72"
 
 	we1, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID1,
 		TaskQueue: "poker-task-queue",
-	}, TableWorkflow, table1, cfg)
+	}, TournamentWorkflow, tables, cfg)
 	if err != nil {
 		t.Fatalf("Failed to start workflow 1: %v", err)
 	}
@@ -100,26 +131,9 @@ func TestTableWorkflow(t *testing.T) {
 	defer cancel()
 
 	// Check results of workflows
-	err = we1.Get(ctx, &table1)
+	err = we1.Get(ctx, &tables)
 	if err != nil {
 		t.Fatalf("Failed to get workflow 1 result: %v", err)
-	}
-
-	workflowID2 := "table-workflow-799"
-
-	for len(table1.Players) >= 2 {
-		we2, err := c.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
-			ID:        workflowID2,
-			TaskQueue: "poker-task-queue",
-		}, TableWorkflow, table1, cfg)
-		if err != nil {
-			t.Fatalf("Failed to start workflow 1: %v", err)
-		}
-
-		err = we2.Get(ctx, &table1)
-		if err != nil {
-			t.Fatalf("Failed to get workflow 2 result: %v", err)
-		}
 	}
 
 	c.Close()

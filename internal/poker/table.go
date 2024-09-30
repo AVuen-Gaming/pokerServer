@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"time"
 
 	"github.com/alexclewontin/riverboat/eval"
 	"github.com/nats-io/nats.go"
@@ -55,6 +56,13 @@ type Table struct {
 	PlayerActedInRound int
 	SidePots           []SidePot
 	LastToRaiserIndex  int
+	Stopped            bool
+	TableEnds          bool
+	MinPlayers         int
+	MaxPlayers         int
+	AvgPlayers         int
+	LastTable          bool
+	EndTableTime       time.Time
 }
 
 const (
@@ -758,4 +766,123 @@ func (table *Table) getNextActivePlayerIndex(startIndex int) int {
 		}
 	}
 	return -1
+}
+
+func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) []Table {
+
+	totalPlayers := 0
+	for _, table := range tables {
+		totalPlayers += len(table.Players)
+	}
+	avgPlayers := totalPlayers / len(tables)
+
+	for j := range tables {
+		if len(tables[j].Players) < tables[j].MinPlayers {
+			tables[j].Stopped = true
+		}
+	}
+
+	for j := 0; j < len(tables); j++ {
+		if currentTable.ID == tables[j].ID {
+			tables[j] = CompareAndRemoveEliminatedPlayers(currentTable, tables[j])
+			break
+		}
+	}
+
+	if len(tables) <= 1 {
+		return tables
+	}
+
+	currentTableAvgPlayers := avgPlayers
+	if len(currentTable.Players) < currentTableAvgPlayers || len(currentTable.Players) < currentTable.MinPlayers {
+		for len(currentTable.Players) > 0 {
+			playerMoved := false
+			for j := 0; j < len(tables); j++ {
+				if currentTable.ID != tables[j].ID && len(tables[j].Players) < tables[j].MaxPlayers {
+					player := currentTable.Players[0]
+					currentTable.Players = currentTable.Players[1:]
+					tables[j].Players = append(tables[j].Players, player)
+					player.SwitchingTable = true
+					player.CurrentTable = tables[j].ID
+					SendPlayerUpdateToNATS(js, currentTable.ID, player)
+					//fmt.Printf("Moved player %s from table %s to table %s\n", player.ID, currentTable.ID, tables[j].ID) //enviar mensaje que movió al jugador de la mesa
+					playerMoved = true
+
+					break
+				}
+			}
+
+			if !playerMoved {
+				break
+			}
+		}
+
+		if len(currentTable.Players) == 0 {
+			currentTable.TableEnds = true
+			currentTable.CurrentStage = "deleteTable"
+			SendPTableUpdateToNATS(js, &currentTable)
+			fmt.Printf("Table %s is now empty and will be removed.\n", currentTable.ID) //enviar mensaje mesa eliminada
+			tables = removeTable(tables, currentTable.ID)
+		}
+	}
+
+	return tables
+}
+
+func GetTableByID(tables []Table, targetTableID string) (*Table, bool) {
+	for i := range tables {
+		if tables[i].ID == targetTableID {
+			return &tables[i], true
+		}
+	}
+	return nil, false
+}
+
+func removeTable(tables []Table, tableID string) []Table {
+	for i := 0; i < len(tables); i++ {
+		if tables[i].ID == tableID {
+			return append(tables[:i], tables[i+1:]...) // Retorna el arreglo sin la mesa eliminada
+		}
+	}
+	return tables
+}
+
+func OnlyOneTableRemains(tables []Table) {
+	if len(tables) > 0 {
+		tables[0].LastTable = false
+	}
+	if len(tables) == 1 {
+		tables[0].LastTable = true
+	}
+}
+
+func (table *Table) TableEnd() {
+	if table.MinPlayers <= len(table.Players) {
+		table.EndTableTime = time.Now()
+		table.TableEnds = true
+	}
+	table.TableEnds = false
+}
+
+func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table) Table {
+	currentTable.SetEliminatePlayersWithNoChips()
+	originalPlayerMap := make(map[string]Player)
+	for _, player := range currentTable.Players {
+		originalPlayerMap[player.ID] = player
+	}
+
+	//en oringnal table no se setea como eliminated probar cambiar currentTable por Original
+
+	var updatedPlayers []Player
+
+	for _, player := range originalTable.Players {
+		if originalPlayer, exists := originalPlayerMap[player.ID]; exists {
+			if !originalPlayer.IsEliminated {
+				updatedPlayers = append(updatedPlayers, player)
+			}
+		}
+	}
+
+	currentTable.Players = updatedPlayers
+	return currentTable
 }
