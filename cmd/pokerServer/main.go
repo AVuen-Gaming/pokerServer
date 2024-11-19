@@ -7,12 +7,11 @@ import (
 	"server/internal/db"
 	"server/internal/nats"
 	"server/internal/poker"
-	"server/internal/server"
+	internal "server/internal/server"
+	"server/internal/server/routes"
 	temporal "server/internal/workflow"
 
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/worker"
-	"go.temporal.io/sdk/workflow"
 	"gorm.io/gorm"
 
 	natsG "github.com/nats-io/nats.go"
@@ -51,22 +50,38 @@ func main() {
 	}
 	defer c.Close()
 
-	w := worker.New(c, "poker-task-queue", worker.Options{})
-	w.RegisterWorkflowWithOptions(temporal.TableWorkflow, workflow.RegisterOptions{Name: "TableWorkflow"})
-	w.RegisterActivity(temporal.DealCardsActivity)
-	w.RegisterActivity(temporal.DealPreFlop)
-	w.RegisterActivity(temporal.DealFlop)
-	w.RegisterActivity(temporal.DealTurn)
-	w.RegisterActivity(temporal.DealRiver)
+	temporal.StartWorker(cfg)
 
-	err = w.Run(worker.InterruptCh())
-	if err != nil {
-		log.Fatalf("Failed to start worker: %v", err)
-	}
+	//w := worker.New(c, "poker-task-queue", worker.Options{})
+	//w.RegisterWorkflowWithOptions(temporal.TableWorkflow, workflow.RegisterOptions{Name: "TableWorkflow"})
+	//w.RegisterWorkflow(PlayerWorkflow)
+	//w.RegisterWorkflow(TableWorkflow)
+	//w.RegisterWorkflow(TournamentWorkflow)
+	//w.RegisterWorkflow(RoundWorkflow)
+	//w.RegisterWorkflow(TournamentControllerWorkflow)
+	//w.RegisterActivity(DealPreFlop)
+	//w.RegisterActivity(DealCardsActivity)
+	//w.RegisterActivity(DealFlop)
+	//w.RegisterActivity(DealTurn)
+	//w.RegisterActivity(DealRiver)
+	//w.RegisterActivity(ShowDown)
+	//w.RegisterActivity(ShowDownAllFoldExecptOne)
+	//w.RegisterActivity(CheckLastTable)
+	//w.RegisterActivity(Reshuffle)
+	//w.RegisterActivity(CreateTablesInTournament)
 
-	runTestWorkflows(c, db.GetDB(), js)
+	//err = w.Run(worker.InterruptCh())
+	//if err != nil {
+	//	log.Fatalf("Failed to start worker: %v", err)
+	//}
 
-	server.StartServer(cfg)
+	// runTestWorkflows(c, db.GetDB(), js)
+
+	server := internal.NewServer(&cfg.Server)
+
+	routes.DefineRoutes(server.Router, c, cfg)
+
+	server.Start()
 }
 
 func runTestWorkflows(c client.Client, db *gorm.DB, js natsG.JetStreamContext) {

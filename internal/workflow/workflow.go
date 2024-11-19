@@ -5,6 +5,7 @@ import (
 	"server/internal/poker"
 	"time"
 
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -193,12 +194,46 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 					workflow.GetLogger(ctx).Error("Child workflow failed", "error", err)
 				}
 			})
-			if tables[0].Round == 4 {
-				return tables, nil
-			}
 		}
 		selector.Select(ctx)
 	}
 
 	return tables, nil
+}
+
+func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournament, config *config.Config) (poker.Tournament, error) {
+	activityOptions := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute * 5,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Second * 5,
+			MaximumInterval:    time.Minute,
+			MaximumAttempts:    1,
+			BackoffCoefficient: 2.0,
+		},
+	}
+	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+
+	now := workflow.Now(ctx)
+	waitDuration := tournament.StartDate.Sub(now)
+
+	if waitDuration > 0 {
+		err := workflow.Sleep(ctx, waitDuration)
+		if err != nil {
+			return tournament, err
+		}
+	}
+
+	err := workflow.ExecuteActivity(ctx, CreateTablesInTournament, &tournament, config).Get(ctx, &tournament)
+	if err != nil {
+		return tournament, err
+	}
+
+	we1 := workflow.ExecuteChildWorkflow(ctx, TournamentWorkflow, tournament.Tables, config)
+
+	err = we1.Get(ctx, &tournament.Tables)
+	if err != nil {
+		return tournament, err
+	}
+
+	return tournament, nil
 }

@@ -45,7 +45,7 @@ func TestTableWorkflow(t *testing.T) {
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "POKER_TOURNAMENT",
 		Subjects:  []string{"pokerServer.tournament.>", "pokerClient.tournament.>"},
-		Retention: nats.WorkQueuePolicy, // Usar política de WorkQueue para asegurar que cada mensaje sea procesado solo una vez.
+		Retention: nats.WorkQueuePolicy,
 	})
 	workerOptions := worker.Options{}
 	w := worker.New(c, "poker-task-queue", workerOptions)

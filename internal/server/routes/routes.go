@@ -1,0 +1,28 @@
+package routes
+
+import (
+	"net/http"
+	"server/config"
+	"server/internal/middlewares"
+	"server/internal/server/controllers"
+
+	"github.com/gorilla/mux"
+	"go.temporal.io/sdk/client"
+)
+
+func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
+	protectedRoutes := r.PathPrefix("/").Subrouter()
+	protectedRoutes.Use(middlewares.JWTAuthMiddleware)
+	protectedRoutes.HandleFunc("/health", HealthCheckHandler).Methods("GET")
+	protectedRoutes.HandleFunc("/tournaments", func(w http.ResponseWriter, r *http.Request) {
+		controllers.CreateTournament(w, r, c, cfg)
+	}).Methods("POST")
+	protectedRoutes.HandleFunc("/tournaments", controllers.GetTournaments).Methods("GET")
+	protectedRoutes.HandleFunc("/tournament/register", controllers.RegisterUserToTournament).Methods("POST")
+	protectedRoutes.HandleFunc("/users", controllers.CreateUser).Methods("POST")
+}
+
+func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Servidor funcionando correctamente"))
+}

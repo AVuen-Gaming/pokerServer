@@ -62,6 +62,7 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterWorkflow(TableWorkflow)
 	w.RegisterWorkflow(TournamentWorkflow)
 	w.RegisterWorkflow(RoundWorkflow)
+	w.RegisterWorkflow(TournamentControllerWorkflow)
 	w.RegisterActivity(DealPreFlop)
 	w.RegisterActivity(DealCardsActivity)
 	w.RegisterActivity(DealFlop)
@@ -71,6 +72,8 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterActivity(ShowDownAllFoldExecptOne)
 	w.RegisterActivity(CheckLastTable)
 	w.RegisterActivity(Reshuffle)
+	w.RegisterActivity(CreateTablesInTournament)
+	w.RegisterActivity(HandleTurns)
 
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {

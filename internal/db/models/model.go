@@ -31,10 +31,12 @@ type Tournament struct {
 	EndDate               time.Time
 	Prize                 string
 	Configuration         string
-	Ongoing               bool      `gorm:"default:false"`
-	MinPlayers            int       `gorm:"not null"`
-	MaxPlayers            int       `gorm:"not null"`
-	TurnSeconds           int       `gorm:"not null"`
+	Ongoing               bool `gorm:"default:false"`
+	MinPlayers            int  `gorm:"not null"`
+	MaxPlayers            int  `gorm:"not null"`
+	TurnSeconds           int  `gorm:"not null"`
+	StartChips            int
+	BBValue               int
 	CreatedAt             time.Time `gorm:"autoCreateTime"`
 	UpdatedAt             time.Time `gorm:"autoUpdateTime"`
 	DeletedAt             time.Time `gorm:"index"`

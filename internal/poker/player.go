@@ -33,8 +33,8 @@ type Player struct {
 	SwitchingTable   bool
 }
 
-func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player) error {
-	subject := fmt.Sprintf("pokerServer.tournament.%s.%s", tableID, player.ID)
+func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player, tournamentId int) error {
+	subject := fmt.Sprintf("pokerServer.%s.%s.%s", tournamentId, tableID, player.ID)
 
 	messageBytes, err := json.Marshal(player)
 	if err != nil {

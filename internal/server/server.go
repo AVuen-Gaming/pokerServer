@@ -1,6 +1,7 @@
-package server
+package internal
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"server/config"
@@ -8,12 +9,24 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func StartServer(cfg *config.Config) {
-	r := mux.NewRouter()
+type Server struct {
+	Config *config.ServerConfig
+	Router *mux.Router
+}
 
-	port := ":" + cfg.Server.Port
-	log.Printf("Server is listening on port%s", port)
-	if err := http.ListenAndServe(port, r); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+func NewServer(cfg *config.ServerConfig) *Server {
+	router := mux.NewRouter()
+	server := &Server{
+		Config: cfg,
+		Router: router,
+	}
+	return server
+}
+
+func (s *Server) Start() {
+	addr := fmt.Sprintf(":%s", s.Config.Port)
+	log.Printf("Iniciando servidor en %s", addr)
+	if err := http.ListenAndServe(addr, s.Router); err != nil {
+		log.Fatalf("No se pudo iniciar el servidor: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/gorilla/mux"
 	"github.com/spf13/viper"
 )
 
@@ -25,7 +26,8 @@ type StreamConfig struct {
 }
 
 type ServerConfig struct {
-	Port string `mapstructure:"port"`
+	Port   string `mapstructure:"port"`
+	Router *mux.Router
 }
 
 type Config struct {

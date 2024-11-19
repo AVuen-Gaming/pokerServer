@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log"
 	"server/config"
+	"server/internal/db"
+	"server/internal/db/models"
 	"server/internal/poker"
+	"strconv"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -33,7 +36,7 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 	js := GetJetStream()
 	for _, player := range table.Players {
 		player.CurrentTable = table.ID
-		if err := poker.SendPlayerUpdateToNATS(js, table.ID, player); err != nil {
+		if err := poker.SendPlayerUpdateToNATS(js, table.ID, player, table.TournamentID); err != nil {
 			log.Printf("Error sending player update to NATS for player ID %s: %v", player.ID, err)
 			continue
 		}
@@ -356,6 +359,67 @@ func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *c
 	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 
 	return table, nil
+}
+
+func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament, config *config.Config) (*poker.Tournament, error) {
+	var tournamentRegistrations []models.TournamentRegistration
+
+	if tournament.ID == 0 {
+		tournamentName, err := db.GetTournamentByName(tournament.Name)
+		if err != nil {
+			return tournament, errors.New("no se pudo obtener torneo")
+		}
+		tournamentRegistrations, err = db.GetTournamentRegistrationsByTournamentID(tournamentName.ID)
+		if err != nil {
+			return tournament, err
+		}
+	} else {
+		tournamentRegistrations, _ = db.GetTournamentRegistrationsByTournamentID(tournament.ID)
+	}
+
+	if len(tournamentRegistrations) == 0 {
+		return tournament, errors.New("no existen registros para este torneo")
+	}
+
+	if len(tournamentRegistrations) < tournament.MinPlayers {
+		return tournament, errors.New("no se cumplen el minimo de players para el torneo")
+	}
+
+	var players []poker.Player
+	for _, registration := range tournamentRegistrations {
+		player := poker.Player{
+			ID:    registration.Wallet.WalletAddress,
+			Chips: tournament.StartChips,
+		}
+		players = append(players, player)
+	}
+
+	maxPlayersPerTable := 9
+	totalPlayers := len(players)
+	numTables := (totalPlayers + maxPlayersPerTable - 1) / maxPlayersPerTable
+
+	var tables []poker.Table
+
+	for i := 0; i < numTables; i++ {
+		table := poker.Table{
+			ID: strconv.Itoa(i + 1),
+		}
+		tables = append(tables, table)
+	}
+
+	for i, player := range players {
+		tableIndex := i % numTables
+		// mover a construct por table no por player
+		tables[tableIndex].Players = append(tables[tableIndex].Players, player)
+		tables[tableIndex].BBValue = tournament.BBValue
+		tables[tableIndex].TurnTime = tournament.TurnSeconds
+		tables[tableIndex].TournamentID = int(tournament.ID)
+	}
+
+	tournament.Players = players
+	tournament.Tables = tables
+
+	return tournament, nil
 }
 
 type MessageResult struct {

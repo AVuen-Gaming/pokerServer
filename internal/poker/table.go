@@ -63,6 +63,7 @@ type Table struct {
 	AvgPlayers         int
 	LastTable          bool
 	EndTableTime       time.Time
+	TournamentID       int
 }
 
 const (
@@ -142,7 +143,7 @@ func createDeck() []Card {
 }
 
 func SendPTableUpdateToNATS(js nats.JetStreamContext, table *Table) error {
-	subject := fmt.Sprintf("pokerServer.tournament.%s", table.ID)
+	subject := fmt.Sprintf("pokerServer.%s.%s", table.TournamentID, table.ID)
 
 	messageBytes, err := json.Marshal(table)
 	if err != nil {
@@ -804,7 +805,7 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 					tables[j].Players = append(tables[j].Players, player)
 					player.SwitchingTable = true
 					player.CurrentTable = tables[j].ID
-					SendPlayerUpdateToNATS(js, currentTable.ID, player)
+					SendPlayerUpdateToNATS(js, currentTable.ID, player, currentTable.TournamentID)
 					//fmt.Printf("Moved player %s from table %s to table %s\n", player.ID, currentTable.ID, tables[j].ID) //enviar mensaje que movió al jugador de la mesa
 					playerMoved = true
 

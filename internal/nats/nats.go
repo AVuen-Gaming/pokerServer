@@ -19,6 +19,12 @@ func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
 		return nil, nil, fmt.Errorf("failed to create JetStream context: %w", err)
 	}
 
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:      "POKER_TOURNAMENT",
+		Subjects:  []string{"pokerServer.>", "pokerClient.>"},
+		Retention: nats.WorkQueuePolicy,
+	})
+
 	return nc, js, nil
 }
 
