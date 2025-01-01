@@ -7,8 +7,7 @@ import (
 )
 
 type UserDTO struct {
-	Username      string `json:"username"`
-	WalletAddress string `json:"wallet_address"`
+	Wallet string `json:"wallet"`
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -20,23 +19,19 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exists, err := db.UserExists(req.Username)
+	wallet, err := db.GetWalletByAddress(req.Wallet)
 	if err != nil {
-		http.Error(w, "Error al verificar la existencia del usuario", http.StatusInternalServerError)
-		return
+		http.Error(w, "Error retrieving wallet", http.StatusInternalServerError)
 	}
 
-	if exists {
-		http.Error(w, "El usuario ya existe", http.StatusConflict)
-		return
-	}
-
-	user, err := db.CreateUserWithWallet(req.Username, req.WalletAddress)
-	if err != nil {
-		http.Error(w, "Error al crear el usuario y su wallet", http.StatusInternalServerError)
-		return
+	if wallet == nil {
+		err = db.CreateUserWithWallet(req.Wallet)
+		if err != nil {
+			http.Error(w, "Error al crear el usuario y su wallet", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(req.Wallet)
 }

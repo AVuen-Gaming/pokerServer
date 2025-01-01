@@ -12,6 +12,8 @@ type Tournament struct {
 	RegistrationEndDate   time.Time
 	StartDate             time.Time
 	EndDate               time.Time
+	EntryCost             float32
+	Currency              string
 	Tables                []Table
 	Players               []Player
 	Prize                 string
@@ -22,6 +24,7 @@ type Tournament struct {
 	TurnSeconds           int
 	StartChips            int
 	BBValue               int
+	Start                 bool
 }
 
 func (tournament *Tournament) CreateTablesForTournament() {

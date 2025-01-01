@@ -20,6 +20,11 @@ func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
 	protectedRoutes.HandleFunc("/tournaments", controllers.GetTournaments).Methods("GET")
 	protectedRoutes.HandleFunc("/tournament/register", controllers.RegisterUserToTournament).Methods("POST")
 	protectedRoutes.HandleFunc("/users", controllers.CreateUser).Methods("POST")
+	protectedRoutes.HandleFunc("/tournament/{wallet}", controllers.GetAvailableTournamentsByWallet).Methods("GET")
+	protectedRoutes.HandleFunc("/tournaments/ongoing/{wallet}", controllers.GetOngoingTournamentsHandler).Methods("GET")
+	protectedRoutes.HandleFunc("/tournaments/registered/{wallet}", controllers.GetRegisteredOngoingTournamentsController).Methods("GET")
+	protectedRoutes.HandleFunc("/tournaments/eliminated/{wallet}", controllers.GetEliminatedAndFinishedTournamentsController).Methods("GET")
+
 }
 
 func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {

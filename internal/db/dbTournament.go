@@ -5,6 +5,7 @@ import (
 )
 
 func InsertTournament(tournament models.Tournament) error {
+	tournament.EndDate = nil
 	result := DB.Create(&tournament)
 	if result.Error != nil {
 		return result.Error
@@ -14,7 +15,7 @@ func InsertTournament(tournament models.Tournament) error {
 
 func GetWalletByAddress(walletAddress string) (*models.Wallet, error) {
 	var wallet models.Wallet
-	result := DB.Where("wallet_address = ?", walletAddress).First(&wallet)
+	result := DB.Where("wallet = ?", walletAddress).First(&wallet)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -80,4 +81,63 @@ func GetTournamentByName(tournamentName string) (*models.Tournament, error) {
 	}
 
 	return &tournament, nil
+}
+
+func GetOngoingTournaments(walletID uint) ([]models.Tournament, error) {
+	var tournaments []models.Tournament
+
+	result := DB.Model(&models.Tournament{}).
+		Where("ongoing = ?", true).
+		Joins("LEFT JOIN tournament_registrations ON tournaments.id = tournament_registrations.tournament_id AND tournament_registrations.wallet_id = ?", walletID).
+		Where("tournament_registrations.id IS NULL").
+		Find(&tournaments)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return tournaments, nil
+}
+
+func GetUnregisteredTournaments(walletID uint) ([]models.Tournament, error) {
+	var tournaments []models.Tournament
+
+	result := DB.Model(&models.Tournament{}).
+		Where("end_date IS NULL").
+		Joins("LEFT JOIN tournament_registrations ON tournaments.id = tournament_registrations.tournament_id AND tournament_registrations.wallet_id = ?", walletID).
+		Where("tournament_registrations.id IS NULL").
+		Find(&tournaments)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return tournaments, nil
+}
+
+func GetRegisteredOngoingTournaments(walletID uint) ([]models.Tournament, error) {
+	var tournaments []models.Tournament
+
+	result := DB.Model(&models.Tournament{}).
+		Joins("JOIN tournament_registrations ON tournaments.id = tournament_registrations.tournament_id").
+		Where("tournament_registrations.wallet_id = ? AND tournament_registrations.eliminated = false AND tournaments.end_date IS NULL", walletID).
+		Find(&tournaments)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return tournaments, nil
+}
+
+func GetEliminatedAndFinishedTournaments(walletID uint) ([]models.Tournament, error) {
+	var tournaments []models.Tournament
+
+	result := DB.Model(&models.Tournament{}).
+		Joins("JOIN tournament_registrations ON tournaments.id = tournament_registrations.tournament_id").
+		Where("tournament_registrations.wallet_id = ? AND tournament_registrations.eliminated = true AND tournaments.end_date IS NOT NULL", walletID).
+		Find(&tournaments)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return tournaments, nil
 }

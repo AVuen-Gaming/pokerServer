@@ -150,7 +150,7 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 
 		log.Printf("El turno es para el jugador %s", table.CurrentTurn)
 
-		subject := fmt.Sprintf("pokerClient.tournament.%s.%s", table.ID, player.ID)
+		subject := fmt.Sprintf("pokerClient.tournament.%s.%s", table.ID, player.ID) // cambiar tournament por tournament id
 		consumerName := fmt.Sprintf("durable-consumer4-%s-%s", table.ID, player.ID)
 		msgChan := make(chan *nats.Msg, 64)
 
@@ -388,13 +388,13 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 	var players []poker.Player
 	for _, registration := range tournamentRegistrations {
 		player := poker.Player{
-			ID:    registration.Wallet.WalletAddress,
+			ID:    registration.Wallet.Wallet,
 			Chips: tournament.StartChips,
 		}
 		players = append(players, player)
 	}
 
-	maxPlayersPerTable := 9
+	maxPlayersPerTable := 9 //todo change by tournament configuration
 	totalPlayers := len(players)
 	numTables := (totalPlayers + maxPlayersPerTable - 1) / maxPlayersPerTable
 

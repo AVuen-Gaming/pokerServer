@@ -27,7 +27,7 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func Migrate() error {
-	err := DB.AutoMigrate(&models.User{}, &models.Wallet{}, &models.Tournament{}, &models.TournamentChip{}, &models.TournamentRegistration{}, &models.Table{}, &models.TablePlayer{}, &models.Ranking{}, &models.RecordLog{})
+	err := DB.AutoMigrate(&models.Wallet{}, &models.Tournament{}, &models.TournamentChip{}, &models.TournamentRegistration{}, &models.Table{}, &models.TablePlayer{}, &models.Ranking{}, &models.RecordLog{})
 	if err != nil {
 		log.Fatalf("Error migrating database: %v", err)
 		return err

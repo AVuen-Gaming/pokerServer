@@ -6,45 +6,15 @@ import (
 	"gorm.io/gorm"
 )
 
-func UserExists(username string) (bool, error) {
-	var user models.User
-	result := DB.Where("username = ?", username).First(&user)
+func CreateUserWithWallet(wallet string) error {
+
+	walletDTO := &models.Wallet{}
+	walletDTO.Wallet = wallet
+	result := DB.Create(&walletDTO)
 	if result.Error != nil {
-		if result.Error.Error() == "record not found" {
-			return false, nil
-		}
-		return false, result.Error
+		return result.Error
 	}
-	return true, nil
-}
-
-func CreateUserWithWallet(username, walletAddress string) (*models.User, error) {
-	user := &models.User{
-		Username: username,
-	}
-
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(user).Error; err != nil {
-			return err
-		}
-
-		wallet := &models.Wallet{
-			UserID:        user.ID,
-			WalletAddress: walletAddress,
-		}
-
-		if err := tx.Create(wallet).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
+	return nil
 }
 
 func CheckUserRegistration(tournamentID, walletID uint) (bool, error) {

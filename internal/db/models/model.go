@@ -4,32 +4,25 @@ import (
 	"time"
 )
 
-type User struct {
+type Wallet struct {
 	ID        uint      `gorm:"primaryKey;autoIncrement"`
-	Username  string    `gorm:"size:50;not null;unique"`
+	Wallet    string    `gorm:"size:100;not null;unique"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 	DeletedAt time.Time `gorm:"index"`
 }
 
-type Wallet struct {
-	ID            uint      `gorm:"primaryKey;autoIncrement"`
-	UserID        uint      `gorm:"not null;unique"`
-	User          User      `gorm:"foreignKey:UserID"`
-	WalletAddress string    `gorm:"size:100;not null;unique"`
-	CreatedAt     time.Time `gorm:"autoCreateTime"`
-	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
-	DeletedAt     time.Time `gorm:"index"`
-}
-
 type Tournament struct {
-	ID                    uint      `gorm:"primaryKey;autoIncrement"`
-	Name                  string    `gorm:"size:100;not null"`
-	RegistrationStartDate time.Time `gorm:"not null"`
-	RegistrationEndDate   time.Time `gorm:"not null"`
-	StartDate             time.Time `gorm:"not null"`
-	EndDate               time.Time
+	ID                    uint       `gorm:"primaryKey;autoIncrement"`
+	Name                  string     `gorm:"size:100;not null"`
+	RegistrationStartDate time.Time  `gorm:"not null"`
+	RegistrationEndDate   time.Time  `gorm:"not null"`
+	StartDate             time.Time  `gorm:"not null"`
+	Start                 bool       `gorm:"default:false"`
+	EndDate               *time.Time `gorm:"default:null"`
 	Prize                 string
+	EntryCost             float32 `gorm:"not null"`
+	Currency              string  `gorm:"not null"`
 	Configuration         string
 	Ongoing               bool `gorm:"default:false"`
 	MinPlayers            int  `gorm:"not null"`
@@ -60,6 +53,7 @@ type TournamentRegistration struct {
 	Tournament   Tournament `gorm:"foreignKey:TournamentID"`
 	WalletID     uint       `gorm:"not null"`
 	Wallet       Wallet     `gorm:"foreignKey:WalletID"`
+	Eliminated   bool       `gorm:"default:false"`
 	CreatedAt    time.Time  `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time  `gorm:"autoUpdateTime"`
 	DeletedAt    time.Time  `gorm:"index"`

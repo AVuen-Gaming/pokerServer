@@ -12,27 +12,33 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"go.temporal.io/sdk/client"
 )
 
 type TournamentDTO struct {
+	ID                    uint
 	Name                  string    `json:"name"`
 	RegistrationStartDate time.Time `json:"registration_start_date"`
 	RegistrationEndDate   time.Time `json:"registration_end_date"`
 	StartDate             time.Time `json:"start_date"`
 	EndDate               time.Time `json:"end_date"`
+	EntryCost             float32   `json:"entry_cost"`
+	Currency              string    `json:"currency"`
 	Prize                 string    `json:"prize"`
 	Configuration         string    `json:"configuration"`
 	MinPlayers            int       `json:"min_players"`
 	MaxPlayers            int       `json:"max_players"`
 	TurnSeconds           int       `json:"turn_seconds"`
+	Ongoing               bool      `json:"ongoing"`
 	StartChips            int       `json:"start_chips"`
 	BBValue               int       `json:"bb_value"`
+	Start                 bool      `json:"start"`
 }
 
 type TournamentRegistrationDTO struct {
 	TournamentID  uint   `json:"tournament_id"`
-	WalletAddress string `json:"wallet_address"`
+	WalletAddress string `json:"wallet"`
 }
 
 func CreateTournament(w http.ResponseWriter, r *http.Request, c client.Client, cfg *config.Config) {
@@ -50,6 +56,14 @@ func CreateTournament(w http.ResponseWriter, r *http.Request, c client.Client, c
 		http.Error(w, "Error al crear el torneo en la base de datos", http.StatusInternalServerError)
 		return
 	}
+
+	tournamentID, err := db.GetTournamentByName(tournament.Name)
+	if err != nil {
+		http.Error(w, "Error al tomar el id", http.StatusInternalServerError)
+		return
+	}
+
+	tournament.ID = tournamentID.ID
 
 	tournamentController := convertToTournamentController(tournament)
 
@@ -136,38 +150,158 @@ func RegisterUserToTournament(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("User successfully registered for the tournament"))
 }
 
+func GetAvailableTournamentsByWallet(w http.ResponseWriter, r *http.Request) {
+	walletAddress := mux.Vars(r)["wallet"]
+
+	wallet, err := db.GetWalletByAddress(walletAddress)
+	if err != nil {
+		http.Error(w, "Error retrieving wallet", http.StatusInternalServerError)
+		return
+	}
+
+	if wallet == nil {
+		http.Error(w, "Wallet does not exist", http.StatusNotFound)
+		return
+	}
+
+	tournaments, err := db.GetUnregisteredTournaments(wallet.ID)
+	if err != nil {
+		http.Error(w, "Error retrieving tournaments", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(tournaments)
+}
+
+func GetOngoingTournamentsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	walletAddress := vars["wallet"]
+
+	wallet, err := db.GetWalletByAddress(walletAddress)
+	if err != nil {
+		http.Error(w, "Error fetching wallet", http.StatusInternalServerError)
+		return
+	}
+
+	if wallet == nil {
+		http.Error(w, "Wallet not found", http.StatusNotFound)
+		return
+	}
+
+	tournaments, err := db.GetOngoingTournaments(wallet.ID)
+	if err != nil {
+		http.Error(w, "Error fetching tournaments", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tournaments)
+}
+
+func GetRegisteredOngoingTournamentsController(w http.ResponseWriter, r *http.Request) {
+	wallet := mux.Vars(r)["wallet"]
+
+	walletData, err := db.GetWalletByAddress(wallet)
+	if err != nil || walletData == nil {
+		http.Error(w, "Wallet does not exist", http.StatusNotFound)
+		return
+	}
+
+	tournaments, err := db.GetRegisteredOngoingTournaments(walletData.ID)
+	if err != nil {
+		http.Error(w, "Error fetching registered tournaments", http.StatusInternalServerError)
+		return
+	}
+
+	response := []poker.Tournament{}
+	for _, t := range tournaments {
+		response = append(response, convertToTournamentController(t))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func GetEliminatedAndFinishedTournamentsController(w http.ResponseWriter, r *http.Request) {
+	wallet := mux.Vars(r)["wallet"]
+
+	walletData, err := db.GetWalletByAddress(wallet)
+	if err != nil {
+		http.Error(w, "Error fetching wallet", http.StatusInternalServerError)
+		return
+	}
+
+	if walletData == nil {
+		http.Error(w, "Wallet not found", http.StatusNotFound)
+		return
+	}
+
+	tournaments, err := db.GetEliminatedAndFinishedTournaments(walletData.ID)
+	if err != nil {
+		http.Error(w, "Error fetching tournaments", http.StatusInternalServerError)
+		return
+	}
+
+	response := []poker.Tournament{}
+	for _, t := range tournaments {
+		response = append(response, convertToTournamentController(t))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func convertToTournament(dto TournamentDTO) models.Tournament {
+	var endDate *time.Time
+	if !dto.EndDate.IsZero() {
+		endDate = &dto.EndDate
+	}
+
 	return models.Tournament{
+		ID:                    dto.ID,
 		Name:                  dto.Name,
 		RegistrationStartDate: dto.RegistrationStartDate,
 		RegistrationEndDate:   dto.RegistrationEndDate,
 		StartDate:             dto.StartDate,
-		EndDate:               dto.EndDate,
+		EndDate:               endDate,
+		EntryCost:             dto.EntryCost,
+		Currency:              dto.Currency,
 		Prize:                 dto.Prize,
 		Configuration:         dto.Configuration,
 		MinPlayers:            dto.MinPlayers,
 		MaxPlayers:            dto.MaxPlayers,
 		TurnSeconds:           dto.TurnSeconds,
-		Ongoing:               false,
+		Ongoing:               dto.Ongoing,
 		StartChips:            dto.StartChips,
 		BBValue:               dto.BBValue,
+		Start:                 dto.Start,
 	}
 }
 
 func convertToTournamentController(dto models.Tournament) poker.Tournament {
+	var endDate time.Time
+	if dto.EndDate != nil {
+		endDate = *dto.EndDate
+	}
+
 	return poker.Tournament{
+		ID:                    dto.ID,
 		Name:                  dto.Name,
 		RegistrationStartDate: dto.RegistrationStartDate,
 		RegistrationEndDate:   dto.RegistrationEndDate,
 		StartDate:             dto.StartDate,
-		EndDate:               dto.EndDate,
+		EndDate:               endDate,
+		EntryCost:             dto.EntryCost,
+		Currency:              dto.Currency,
 		Prize:                 dto.Prize,
 		Configuration:         dto.Configuration,
 		MinPlayers:            dto.MinPlayers,
 		MaxPlayers:            dto.MaxPlayers,
 		TurnSeconds:           dto.TurnSeconds,
-		Ongoing:               false,
+		Ongoing:               dto.Ongoing,
 		StartChips:            dto.StartChips,
 		BBValue:               dto.BBValue,
+		Start:                 dto.Start,
 	}
 }
