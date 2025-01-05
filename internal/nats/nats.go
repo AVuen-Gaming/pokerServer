@@ -22,7 +22,7 @@ func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "POKER_TOURNAMENT",
 		Subjects:  []string{"pokerServer.>", "pokerClient.>"},
-		Retention: nats.WorkQueuePolicy,
+		Retention: nats.InterestPolicy,
 	})
 
 	return nc, js, nil

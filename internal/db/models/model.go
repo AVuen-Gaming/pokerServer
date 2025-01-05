@@ -70,14 +70,16 @@ type Table struct {
 }
 
 type TablePlayer struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement"`
-	TableID   uint      `gorm:"not null"`
-	Table     Table     `gorm:"foreignKey:TableID"`
-	WalletID  uint      `gorm:"not null"`
-	Wallet    Wallet    `gorm:"foreignKey:WalletID"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
-	DeletedAt time.Time `gorm:"index"`
+	ID           uint       `gorm:"primaryKey;autoIncrement"`
+	TableID      uint       `gorm:"not null"`
+	Table        Table      `gorm:"foreignKey:TableID"`
+	WalletID     uint       `gorm:"not null"`
+	Wallet       Wallet     `gorm:"foreignKey:WalletID"`
+	TournamentID uint       `gorm:"not null"`
+	Tournament   Tournament `gorm:"foreignKey:TournamentID"`
+	CreatedAt    time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `gorm:"autoUpdateTime"`
+	DeletedAt    time.Time  `gorm:"index"`
 }
 
 type Ranking struct {

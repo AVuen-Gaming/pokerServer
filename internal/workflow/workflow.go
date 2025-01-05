@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"server/config"
+	"server/internal/db"
 	"server/internal/poker"
 	"time"
 
@@ -223,8 +224,24 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 		}
 	}
 
-	err := workflow.ExecuteActivity(ctx, CreateTablesInTournament, &tournament, config).Get(ctx, &tournament)
+	err := db.UpdateTournamentOngoing(tournament.ID, true)
 	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
+		return tournament, err
+	}
+
+	err = db.UpdateTournamentStart(tournament.ID, true)
+	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
+		return tournament, err
+	}
+
+	err = workflow.ExecuteActivity(ctx, CreateTablesInTournament, &tournament, config).Get(ctx, &tournament)
+	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
 		return tournament, err
 	}
 
@@ -232,8 +249,15 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 
 	err = we1.Get(ctx, &tournament.Tables)
 	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
 		return tournament, err
 	}
+	db.SetTournamentEndDate(tournament.ID)
 
+	err = db.UpdateTournamentOngoing(tournament.ID, false)
+	if err != nil {
+		return tournament, err
+	}
 	return tournament, nil
 }

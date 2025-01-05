@@ -397,6 +397,10 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 	maxPlayersPerTable := 9 //todo change by tournament configuration
 	totalPlayers := len(players)
 	numTables := (totalPlayers + maxPlayersPerTable - 1) / maxPlayersPerTable
+	err := db.CreateTables(tournament.ID, numTables)
+	if err != nil {
+		return tournament, err
+	}
 
 	var tables []poker.Table
 
@@ -414,6 +418,14 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 		tables[tableIndex].BBValue = tournament.BBValue
 		tables[tableIndex].TurnTime = tournament.TurnSeconds
 		tables[tableIndex].TournamentID = int(tournament.ID)
+		walletID, err := db.GetWalletIDByPlayerID(player.ID)
+		if err != nil {
+			return tournament, errors.New("failed to retrieve wallet ID for player: " + player.ID)
+		}
+		err = db.InsertTablePlayer(uint(tableIndex+1), walletID, tournament.ID)
+		if err != nil {
+			return tournament, errors.New("failed to insert into TablePlayer for player: " + player.ID)
+		}
 	}
 
 	tournament.Players = players

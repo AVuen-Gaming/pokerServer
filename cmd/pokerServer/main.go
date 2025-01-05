@@ -52,31 +52,6 @@ func main() {
 
 	temporal.StartWorker(cfg)
 
-	//w := worker.New(c, "poker-task-queue", worker.Options{})
-	//w.RegisterWorkflowWithOptions(temporal.TableWorkflow, workflow.RegisterOptions{Name: "TableWorkflow"})
-	//w.RegisterWorkflow(PlayerWorkflow)
-	//w.RegisterWorkflow(TableWorkflow)
-	//w.RegisterWorkflow(TournamentWorkflow)
-	//w.RegisterWorkflow(RoundWorkflow)
-	//w.RegisterWorkflow(TournamentControllerWorkflow)
-	//w.RegisterActivity(DealPreFlop)
-	//w.RegisterActivity(DealCardsActivity)
-	//w.RegisterActivity(DealFlop)
-	//w.RegisterActivity(DealTurn)
-	//w.RegisterActivity(DealRiver)
-	//w.RegisterActivity(ShowDown)
-	//w.RegisterActivity(ShowDownAllFoldExecptOne)
-	//w.RegisterActivity(CheckLastTable)
-	//w.RegisterActivity(Reshuffle)
-	//w.RegisterActivity(CreateTablesInTournament)
-
-	//err = w.Run(worker.InterruptCh())
-	//if err != nil {
-	//	log.Fatalf("Failed to start worker: %v", err)
-	//}
-
-	// runTestWorkflows(c, db.GetDB(), js)
-
 	server := internal.NewServer(&cfg.Server)
 
 	routes.DefineRoutes(server.Router, c, cfg)

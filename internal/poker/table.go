@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/alexclewontin/riverboat/eval"
@@ -143,7 +144,7 @@ func createDeck() []Card {
 }
 
 func SendPTableUpdateToNATS(js nats.JetStreamContext, table *Table) error {
-	subject := fmt.Sprintf("pokerServer.%s.%s", table.TournamentID, table.ID)
+	subject := fmt.Sprintf("pokerServer.%s.%s", strconv.Itoa(table.TournamentID), table.ID)
 
 	messageBytes, err := json.Marshal(table)
 	if err != nil {

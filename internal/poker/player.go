@@ -3,6 +3,7 @@ package poker
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/nats-io/nats.go"
 )
@@ -34,7 +35,7 @@ type Player struct {
 }
 
 func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player, tournamentId int) error {
-	subject := fmt.Sprintf("pokerServer.%s.%s.%s", tournamentId, tableID, player.ID)
+	subject := fmt.Sprintf("pokerServer.%s.%s.%s", strconv.Itoa(tournamentId), tableID, player.ID)
 
 	messageBytes, err := json.Marshal(player)
 	if err != nil {
