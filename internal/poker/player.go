@@ -9,7 +9,8 @@ import (
 )
 
 type Player struct {
-	ID               string
+	ID string //wallet
+	//add walletid
 	Chips            int
 	Cards            []Card
 	LastAction       string

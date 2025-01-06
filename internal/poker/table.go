@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"server/internal/db"
 	"strconv"
 	"time"
 
@@ -746,6 +747,8 @@ func (table *Table) SetEliminatePlayersWithNoChips() {
 	for i := range table.Players {
 		if table.Players[i].Chips <= 0 {
 			table.Players[i].IsEliminated = true
+			walletId, _ := db.GetWalletIDByPlayerID(table.Players[i].ID) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+			db.UpdateTournamentRegistrationEliminated(table.TournamentID, walletId)
 		}
 	}
 }
@@ -807,7 +810,12 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 					player.SwitchingTable = true
 					player.CurrentTable = tables[j].ID
 					SendPlayerUpdateToNATS(js, currentTable.ID, player, currentTable.TournamentID)
-					//fmt.Printf("Moved player %s from table %s to table %s\n", player.ID, currentTable.ID, tables[j].ID) //enviar mensaje que movió al jugador de la mesa
+
+					walletId, _ := db.GetWalletIDByPlayerID(player.ID) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+					currentTableId, _ := strconv.Atoi(player.CurrentTable)
+
+					db.UpdateTablePlayerTableID(walletId, currentTable.TournamentID, currentTableId)
+
 					playerMoved = true
 
 					break
@@ -822,8 +830,9 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 		if len(currentTable.Players) == 0 {
 			currentTable.TableEnds = true
 			currentTable.CurrentStage = "deleteTable"
+			currentTableId, _ := strconv.Atoi(currentTable.ID)
+			db.DeleteTablePlayerByTableAndTournament(currentTableId, currentTable.TournamentID)
 			SendPTableUpdateToNATS(js, &currentTable)
-			fmt.Printf("Table %s is now empty and will be removed.\n", currentTable.ID) //enviar mensaje mesa eliminada
 			tables = removeTable(tables, currentTable.ID)
 		}
 	}

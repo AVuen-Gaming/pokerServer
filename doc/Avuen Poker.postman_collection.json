@@ -1,0 +1,445 @@
+{
+	"info": {
+		"_postman_id": "ea7ee309-6094-445f-a1ad-eb01d16b18e6",
+		"name": "Avuen Poker",
+		"description": "Colección para probar los endpoints de torneos, usuarios y registro en Postman",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "13114461"
+	},
+	"item": [
+		{
+			"name": "Create Tournament",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"popiusito2525sssqsqsqsa4\",\n    \"registration_start_date\": \"2025-01-04T23:44:00Z\",\n    \"registration_end_date\": \"2025-01-04T23:44:00Z\",\n    \"start_date\": \"2025-01-04T23:44:00Z\",\n    \"entry_cost\": 0.01,\n    \"currency\": \"SepoliaETH\",\n    \"prize\": \"50000 USD\",\n    \"ongoing\": false,\n    \"start\": false,\n    \"configuration\": \"Texas Hold'em\",\n    \"min_players\": 2,\n    \"max_players\": 100,\n    \"turn_seconds\": 30,\n    \"start_chips\": 300,\n    \"bb_value\":    50\n}"
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tournament",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tournament Wallet",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournament/0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournament",
+						"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tournament Started",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments/ongoing/0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments",
+						"ongoing",
+						"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tournament Registred",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments/registered/0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments",
+						"registered",
+						"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tournament Wallet History",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments/eliminated/0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments",
+						"eliminated",
+						"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Health",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournaments",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournaments"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create User",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"wallet\": \"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8dab\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:7000/users",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"users"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get WalletID",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"wallet_address\": \"0x6f3ab5be8fb1d2319d90eb4328be3bc4ba7b8daba\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:7000/wallet",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"wallet"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tables",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/table/2",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"table",
+						"2"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get TablePlayer",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tablePlayer/2/1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tablePlayer",
+						"2",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Register User to Tournament",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"tournament_id\": 1,\n    \"wallet_address\": \"0x123456789abcdef\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournament/register",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournament",
+						"register"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
