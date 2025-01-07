@@ -748,6 +748,7 @@ func (table *Table) SetEliminatePlayersWithNoChips() {
 		if table.Players[i].Chips <= 0 {
 			table.Players[i].IsEliminated = true
 			walletId, _ := db.GetWalletIDByPlayerID(table.Players[i].ID) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+			db.InsertRanking(table.TournamentID, walletId)
 			db.UpdateTournamentRegistrationEliminated(table.TournamentID, walletId)
 		}
 	}

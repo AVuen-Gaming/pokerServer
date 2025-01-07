@@ -29,7 +29,12 @@ func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
 	//tables
 	protectedRoutes.HandleFunc("/table/{tournamentID}", controllers.GetTablesByTournamentID).Methods("GET")
 	//tablePlayer
-	protectedRoutes.HandleFunc("/tablePlayer/{walletID}/{tournamentID}", controllers.GetTablePlayersByWalletAndTournament).Methods("GET")
+	protectedRoutes.HandleFunc("/tablePlayer/{tournamentID}/{walletID}", controllers.GetTablePlayersByWalletAndTournament).Methods("GET")
+	//tournamentRegistration
+	protectedRoutes.HandleFunc("/tournamentRegistration/{tournamentID}/{walletID}", controllers.GetTournamentRegistrationByTournamentAndWallet).Methods("GET")
+	//ranking
+	protectedRoutes.HandleFunc("/rankings/{tournamentID}", controllers.GetRankingsByTournament).Methods("GET")
+	protectedRoutes.HandleFunc("/ranking/{tournamentID}/{walletID}", controllers.GetRankingByTournamentAndWallet).Methods("GET")
 }
 
 func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {

@@ -19,12 +19,13 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wallet, err := db.GetWalletByAddress(req.Wallet)
+	walletExist, err := db.WalletExistsByAddress(req.Wallet)
 	if err != nil {
 		http.Error(w, "Error retrieving wallet", http.StatusInternalServerError)
+		return
 	}
 
-	if wallet == nil {
+	if !walletExist {
 		err = db.CreateUserWithWallet(req.Wallet)
 		if err != nil {
 			http.Error(w, "Error al crear el usuario y su wallet", http.StatusInternalServerError)
