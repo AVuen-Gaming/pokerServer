@@ -331,6 +331,21 @@ func CheckLastTable(ctx context.Context, tables []poker.Table, updatedTable poke
 	if tables[0].LastTable {
 		tables[0].TableEnd()
 		if tables[0].TableEnds {
+			for _, player := range tables[0].Players {
+				walletID, err := db.GetWalletIDByPlayerID(player.ID)
+				if err != nil {
+					return true, fmt.Errorf("error consiguiendo el walletID del ganador: %v", err)
+				}
+				position, err := db.InsertRanking(tables[0].TournamentID, walletID)
+				if err != nil {
+					return true, fmt.Errorf("error InsertRanking: %v", err)
+				}
+				err = poker.HandlePlayerPrize(uint(tables[0].TournamentID), position.Position, player.ID)
+				if err != nil {
+					return true, fmt.Errorf("error HandlePlayerPrize: %v", err)
+				}
+
+			}
 			tables[0].CurrentStage = StageFinishTournament
 			err := poker.SendPTableUpdateToNATS(js, &tables[0])
 			if err != nil {
@@ -341,6 +356,53 @@ func CheckLastTable(ctx context.Context, tables []poker.Table, updatedTable poke
 	}
 
 	return false, nil
+}
+
+func CreatePrizePool(ctx context.Context, tournament *poker.Tournament, config *config.Config) (*poker.Tournament, error) {
+	tourId := tournament.ID
+	dbTournament, err := db.GetTournamentByID(tourId)
+	if err != nil {
+		return tournament, fmt.Errorf("error obteniendo el torneo con ID %d: %v", tourId, err)
+	}
+
+	if dbTournament.EntryCost == 0 {
+		return tournament, fmt.Errorf("el torneo con ID %d no tiene un entry cost válido", tourId)
+	}
+
+	registrations, err := db.GetTournamentRegistrationsByTournamentID(tourId)
+	if err != nil {
+		return tournament, fmt.Errorf("error obteniendo registros del torneo con ID %d: %v", tourId, err)
+	}
+
+	numParticipants := len(registrations)
+	if numParticipants == 0 {
+		return tournament, fmt.Errorf("no hay registros para el torneo con ID %d", tourId)
+	}
+
+	totalPot := float32(numParticipants) * dbTournament.EntryCost
+	prizePool := totalPot * 0.96
+
+	prizeList := poker.GeneratePrizeList(numParticipants, prizePool)
+
+	tournament.PrizeList = prizeList
+
+	prizeListJSON, err := json.Marshal(prizeList)
+	if err != nil {
+		return tournament, fmt.Errorf("error serializando la lista de premios a JSON: %v", err)
+	}
+
+	prize := models.Prize{
+		TournamentID: dbTournament.ID,
+		TotalPot:     prizePool,
+		PrizeList:    prizeListJSON,
+	}
+
+	if err := db.InsertPrize(&prize); err != nil {
+		return tournament, fmt.Errorf("error al guardar el premio: %v", err)
+	}
+
+	log.Printf("Se creó el premio para el torneo con ID %d, TotalPot: %.2f", tourId, prizePool)
+	return tournament, nil
 }
 
 func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
@@ -406,7 +468,8 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 
 	for i := 0; i < numTables; i++ {
 		table := poker.Table{
-			ID: strconv.Itoa(i + 1),
+			ID:             strconv.Itoa(i + 1),
+			IncrementBlind: tournament.IncrementBlind,
 		}
 		tables = append(tables, table)
 	}
@@ -475,6 +538,12 @@ func tableExists(tables []poker.Table, tableID string) bool {
 func updateTableFromUpdatedTable(originalTable poker.Table, updatedTable poker.Table) poker.Table {
 	playerMap := make(map[string]*poker.Player)
 	for i := range originalTable.Players {
+		for j := range updatedTable.Players {
+			if updatedTable.Players[j].ID == originalTable.Players[j].ID {
+				originalTable.Players[j].Chips = updatedTable.Players[j].Chips
+				break
+			}
+		}
 		playerMap[originalTable.Players[i].ID] = &originalTable.Players[i]
 	}
 
@@ -492,11 +561,14 @@ func updateTableFromUpdatedTable(originalTable poker.Table, updatedTable poker.T
 			originalTable.Players = append(originalTable.Players[:i], originalTable.Players[i+1:]...)
 		}
 	}
+	//CONSTRUCTOR
 	//mover a constructor
 	//ver posibles campos extras necesarios
 	originalTable.Round = updatedTable.Round
 	originalTable.CurrentBB = updatedTable.CurrentBB
 	originalTable.CurrentSB = updatedTable.CurrentSB
+	originalTable.BBValue = updatedTable.BBValue
+	originalTable.LastIncrementBlind = updatedTable.LastIncrementBlind
 
 	return originalTable
 }

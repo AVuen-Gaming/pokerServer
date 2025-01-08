@@ -35,6 +35,8 @@ func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
 	//ranking
 	protectedRoutes.HandleFunc("/rankings/{tournamentID}", controllers.GetRankingsByTournament).Methods("GET")
 	protectedRoutes.HandleFunc("/ranking/{tournamentID}/{walletID}", controllers.GetRankingByTournamentAndWallet).Methods("GET")
+	//prizes
+	protectedRoutes.HandleFunc("/prizes/{tournamentID}", controllers.GetPrizeByTournamentID).Methods("GET")
 }
 
 func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {

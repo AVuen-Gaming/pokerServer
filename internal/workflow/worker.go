@@ -74,6 +74,7 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterActivity(Reshuffle)
 	w.RegisterActivity(CreateTablesInTournament)
 	w.RegisterActivity(HandleTurns)
+	w.RegisterActivity(CreatePrizePool)
 
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {

@@ -5,11 +5,10 @@ import (
 	"server/internal/db/models"
 )
 
-func InsertRanking(tournamentID int, walletID uint) error {
+func InsertRanking(tournamentID int, walletID uint) (*models.Ranking, error) {
 	var lastRanking models.Ranking
 	result := DB.Where("tournament_id = ?", tournamentID).
-		Order("position DESC").
-		First(&lastRanking)
+		Last(&lastRanking)
 
 	var newPosition int
 	if result.RowsAffected == 0 {
@@ -19,7 +18,7 @@ func InsertRanking(tournamentID int, walletID uint) error {
 			Count(&count)
 
 		if countResult.Error != nil {
-			return errors.New("error counting tournament registrations")
+			return nil, errors.New("error counting tournament registrations")
 		}
 
 		newPosition = int(count)
@@ -34,10 +33,10 @@ func InsertRanking(tournamentID int, walletID uint) error {
 	}
 
 	if insertErr := DB.Create(newRanking).Error; insertErr != nil {
-		return errors.New("error inserting new ranking")
+		return nil, errors.New("error inserting new ranking")
 	}
 
-	return nil
+	return newRanking, nil
 }
 
 func GetRankingsByTournamentID(tournamentID uint) ([]models.Ranking, error) {

@@ -25,6 +25,8 @@ type Tournament struct {
 	StartChips            int
 	BBValue               int
 	Start                 bool
+	IncrementBlind        int
+	PrizeList             []map[string]interface{}
 }
 
 func (tournament *Tournament) CreateTablesForTournament() {

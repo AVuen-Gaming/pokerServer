@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -30,6 +31,8 @@ type Tournament struct {
 	TurnSeconds           int  `gorm:"not null"`
 	StartChips            int
 	BBValue               int
+	IncrementBlind        int `gorm:"not null"` // tiempo cada cuando se actualiza la blind
+	LastIncrementBlind    time.Time
 	CreatedAt             time.Time `gorm:"autoCreateTime"`
 	UpdatedAt             time.Time `gorm:"autoUpdateTime"`
 	DeletedAt             time.Time `gorm:"index"`
@@ -92,6 +95,17 @@ type Ranking struct {
 	CreatedAt    time.Time  `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time  `gorm:"autoUpdateTime"`
 	DeletedAt    time.Time  `gorm:"index"`
+}
+
+type Prize struct {
+	ID           uint            `gorm:"primaryKey;autoIncrement"`
+	TournamentID uint            `gorm:"not null"`
+	Tournament   Tournament      `gorm:"foreignKey:TournamentID"`
+	TotalPot     float32         `gorm:"not null"`
+	PrizeList    json.RawMessage `gorm:"type:json"`
+	CreatedAt    time.Time       `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time       `gorm:"autoUpdateTime"`
+	DeletedAt    *time.Time      `gorm:"index"`
 }
 
 type RecordLog struct {

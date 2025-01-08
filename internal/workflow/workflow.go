@@ -245,6 +245,11 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 		return tournament, err
 	}
 
+	err = workflow.ExecuteActivity(ctx, CreatePrizePool, &tournament, config).Get(ctx, &tournament)
+	if err != nil {
+		return tournament, err
+	}
+
 	we1 := workflow.ExecuteChildWorkflow(ctx, TournamentWorkflow, tournament.Tables, config)
 
 	err = we1.Get(ctx, &tournament.Tables)

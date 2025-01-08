@@ -140,6 +140,22 @@ func UpdateTournamentOngoing(tournamentID uint, ongoing bool) error {
 	return nil
 }
 
+func UpdateTournamentLastIncrementBlind(tournamentID uint, lastIncrementBlind time.Time) error {
+	var tournament models.Tournament
+	result := DB.First(&tournament, tournamentID)
+	if result.Error != nil {
+		return errors.New("tournament not found")
+	}
+
+	tournament.LastIncrementBlind = lastIncrementBlind
+
+	if saveErr := DB.Save(&tournament).Error; saveErr != nil {
+		return errors.New("error updating tournament ongoing status")
+	}
+
+	return nil
+}
+
 func UpdateTournamentStart(tournamentID uint, start bool) error {
 	var tournament models.Tournament
 	result := DB.First(&tournament, tournamentID)

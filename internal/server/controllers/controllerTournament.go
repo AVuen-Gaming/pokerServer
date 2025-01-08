@@ -34,6 +34,7 @@ type TournamentDTO struct {
 	StartChips            int       `json:"start_chips"`
 	BBValue               int       `json:"bb_value"`
 	Start                 bool      `json:"start"`
+	IncrementBlind        int       `json:"increment_blind"`
 }
 
 type TournamentRegistrationDTO struct {
@@ -276,6 +277,7 @@ func convertToTournament(dto TournamentDTO) models.Tournament {
 		StartChips:            dto.StartChips,
 		BBValue:               dto.BBValue,
 		Start:                 dto.Start,
+		IncrementBlind:        dto.IncrementBlind,
 	}
 }
 
@@ -303,5 +305,6 @@ func convertToTournamentController(dto models.Tournament) poker.Tournament {
 		StartChips:            dto.StartChips,
 		BBValue:               dto.BBValue,
 		Start:                 dto.Start,
+		IncrementBlind:        dto.IncrementBlind,
 	}
 }

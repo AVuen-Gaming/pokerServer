@@ -66,6 +66,8 @@ type Table struct {
 	LastTable          bool
 	EndTableTime       time.Time
 	TournamentID       int
+	IncrementBlind     int
+	LastIncrementBlind time.Time
 }
 
 const (
@@ -195,6 +197,18 @@ func (table *Table) SetTablePlayersCallAmount() {
 }
 
 func (table *Table) SetSMBB() {
+	//tournament, _ := db.GetTournamentByID(uint(table.TournamentID))
+	if table.LastIncrementBlind.IsZero() {
+		table.LastIncrementBlind = time.Now()
+		//db.UpdateTournamentLastIncrementBlind(uint(table.TournamentID), table.LastIncrementBlind)
+	} else {
+		if time.Since(table.LastIncrementBlind) >= time.Duration(table.IncrementBlind)*time.Minute {
+			table.BBValue *= 2
+			table.LastIncrementBlind = time.Now()
+			//db.UpdateTournamentLastIncrementBlind(uint(table.TournamentID), table.LastIncrementBlind)
+		}
+	}
+
 	var smPlayer, bbPlayer *Player
 	bbBet := table.BBValue
 	smBet := table.BBValue / 2
@@ -747,14 +761,48 @@ func (table *Table) SetEliminatePlayersWithNoChips() {
 	for i := range table.Players {
 		if table.Players[i].Chips <= 0 {
 			table.Players[i].IsEliminated = true
-			walletId, _ := db.GetWalletIDByPlayerID(table.Players[i].ID) //todo: solo un get en el armado de table.Players agregando el campo a la struct
-			db.InsertRanking(table.TournamentID, walletId)
-			db.UpdateTournamentRegistrationEliminated(table.TournamentID, walletId)
 		}
 	}
 }
 
-func (table *Table) RemovePlayersEliminatedWithNoChips() {
+func HandlePlayerPrize(tournamentID uint, position int, walletAddress string) error {
+	prize, err := db.GetPrizeByTournamentID(tournamentID)
+	if err != nil {
+		return fmt.Errorf("error obteniendo premios para el torneo %d: %v", tournamentID, err)
+	}
+
+	var prizeList []struct {
+		Position      int     `json:"position"`
+		Prize         float64 `json:"prize"`
+		Currency      string  `json:"currency"`
+		WalletAddress string  `json:"wallet_address"`
+	}
+
+	if err := json.Unmarshal(prize.PrizeList, &prizeList); err != nil {
+		return fmt.Errorf("error deserializando la lista de premios para el torneo %d: %v", tournamentID, err)
+	}
+
+	for idx, p := range prizeList {
+		if p.Position == position {
+			prizeList[idx].WalletAddress = walletAddress
+
+			updatedPrizeList, err := json.Marshal(prizeList)
+			if err != nil {
+				return fmt.Errorf("error serializando la lista de premios actualizada: %v", err)
+			}
+
+			if err := db.UpdatePrizeList(tournamentID, updatedPrizeList); err != nil {
+				return fmt.Errorf("error actualizando la lista de premios en la base de datos: %v", err)
+			}
+
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (table *Table) RemovePlayersEliminatedWithNoChips() { //deprecado creo
 	var remainingPlayers []Player
 	for _, player := range table.Players {
 		if !player.IsEliminated {
@@ -869,11 +917,12 @@ func OnlyOneTableRemains(tables []Table) {
 }
 
 func (table *Table) TableEnd() {
-	if table.MinPlayers <= len(table.Players) {
+	if len(table.Players) <= 1 {
 		table.EndTableTime = time.Now()
 		table.TableEnds = true
+	} else {
+		table.TableEnds = false
 	}
-	table.TableEnds = false
 }
 
 func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table) Table {
@@ -883,14 +932,21 @@ func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table) Table 
 		originalPlayerMap[player.ID] = player
 	}
 
-	//en oringnal table no se setea como eliminated probar cambiar currentTable por Original
-
 	var updatedPlayers []Player
 
 	for _, player := range originalTable.Players {
 		if originalPlayer, exists := originalPlayerMap[player.ID]; exists {
 			if !originalPlayer.IsEliminated {
 				updatedPlayers = append(updatedPlayers, player)
+			}
+			if originalPlayer.IsEliminated {
+				walletId, _ := db.GetWalletIDByPlayerID(player.ID) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+				position, _ := db.InsertRanking(originalTable.TournamentID, walletId)
+				err := HandlePlayerPrize(uint(originalTable.TournamentID), position.Position, player.ID)
+				if err != nil {
+					log.Printf("Error manejando premios para el jugador %s en posición %d: %v", player.ID, position, err)
+				}
+				db.UpdateTournamentRegistrationEliminated(originalTable.TournamentID, walletId)
 			}
 		}
 	}
