@@ -215,7 +215,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
 	now := workflow.Now(ctx)
-	waitDuration := tournament.StartDate.Sub(now)
+	waitDuration := tournament.RegistrationEndDate.Sub(now)
 
 	if waitDuration > 0 {
 		err := workflow.Sleep(ctx, waitDuration)
@@ -224,14 +224,8 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 		}
 	}
 
-	err := db.UpdateTournamentOngoing(tournament.ID, true)
-	if err != nil {
-		db.UpdateTournamentOngoing(tournament.ID, false)
-		db.SetTournamentEndDate(tournament.ID)
-		return tournament, err
-	}
-
-	err = db.UpdateTournamentStart(tournament.ID, true)
+	now = workflow.Now(ctx)
+	err := workflow.ExecuteActivity(ctx, CreatePrizePool, &tournament, config).Get(ctx, &tournament)
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
@@ -245,8 +239,26 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 		return tournament, err
 	}
 
-	err = workflow.ExecuteActivity(ctx, CreatePrizePool, &tournament, config).Get(ctx, &tournament)
+	waitDuration = tournament.StartDate.Sub(now)
+
+	if waitDuration > 0 {
+		err := workflow.Sleep(ctx, waitDuration)
+		if err != nil {
+			return tournament, err
+		}
+	}
+
+	err = db.UpdateTournamentOngoing(tournament.ID, true)
 	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
+		return tournament, err
+	}
+
+	err = db.UpdateTournamentStart(tournament.ID, true)
+	if err != nil {
+		db.UpdateTournamentOngoing(tournament.ID, false)
+		db.SetTournamentEndDate(tournament.ID)
 		return tournament, err
 	}
 

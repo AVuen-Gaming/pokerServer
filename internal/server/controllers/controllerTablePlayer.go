@@ -51,17 +51,11 @@ func GetTablePlayersByWalletAndTournament(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var response []TablePlayerResponse
-	for _, tp := range tablePlayers {
-		response = append(response, TablePlayerResponse{
-			ID:           tp.ID,
-			TableID:      tp.TableID,
-			WalletID:     tp.WalletID,
-			TournamentID: tp.TournamentID,
-			CreatedAt:    tp.CreatedAt.String(),
-			UpdatedAt:    tp.UpdatedAt.String(),
-		})
-	}
+	var response TablePlayerResponse
+	response.ID = tablePlayers.ID
+	response.TableID = tablePlayers.TableID
+	response.WalletID = tablePlayers.WalletID
+	response.WalletID = tablePlayers.TournamentID
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

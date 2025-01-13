@@ -27,11 +27,11 @@ func InsertTablePlayer(tableID, walletID, tournamentID uint) error {
 	return nil
 }
 
-func GetTablePlayersByWalletAndTournament(walletID uint, tournamentID uint) ([]models.TablePlayer, error) {
-	var tablePlayers []models.TablePlayer
+func GetTablePlayersByWalletAndTournament(walletID uint, tournamentID uint) (models.TablePlayer, error) {
+	var tablePlayers models.TablePlayer
 	result := DB.Where("wallet_id = ? AND tournament_id = ?", walletID, tournamentID).Find(&tablePlayers)
 	if result.Error != nil {
-		return nil, errors.New("error fetching table players for the given wallet and tournament")
+		return tablePlayers, errors.New("error fetching table players for the given wallet and tournament")
 	}
 	return tablePlayers, nil
 }

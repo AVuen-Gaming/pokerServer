@@ -9,6 +9,7 @@ import (
 	"server/internal/db/models"
 	"server/internal/poker"
 	temporal "server/internal/workflow"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,72 @@ type TournamentDTO struct {
 type TournamentRegistrationDTO struct {
 	TournamentID  uint   `json:"tournament_id"`
 	WalletAddress string `json:"wallet"`
+}
+
+type RegistrationAvailabilityDTO struct {
+	IsAvailable bool `json:"is_available"`
+}
+
+func CheckTournamentRegistrationAvailability(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	walletIDStr := vars["walletID"]
+	tournamentIDStr := vars["tournamentID"]
+
+	walletID, err := strconv.ParseUint(walletIDStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid wallet ID", http.StatusBadRequest)
+		return
+	}
+
+	tournamentID, err := strconv.ParseUint(tournamentIDStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid tournament ID", http.StatusBadRequest)
+		return
+	}
+
+	tournament, err := db.GetTournamentByID(uint(tournamentID))
+	if err != nil {
+		http.Error(w, "Error retrieving tournament", http.StatusInternalServerError)
+		return
+	}
+
+	if tournament == nil {
+		http.Error(w, "Tournament not found", http.StatusNotFound)
+		return
+	}
+
+	registration, err := db.GetTournamentRegistrationByTournamentAndWallet(uint(tournamentID), uint(walletID))
+	if err != nil {
+		http.Error(w, "Error checking tournament registration", http.StatusInternalServerError)
+		return
+	}
+
+	if registration != nil {
+		response := RegistrationAvailabilityDTO{IsAvailable: false}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	if time.Now().After(tournament.RegistrationEndDate) {
+		response := RegistrationAvailabilityDTO{IsAvailable: false}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	timeLeft := time.Until(tournament.RegistrationEndDate)
+	if timeLeft.Seconds() <= 10 {
+		response := RegistrationAvailabilityDTO{IsAvailable: false}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	response := RegistrationAvailabilityDTO{IsAvailable: true}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func CreateTournament(w http.ResponseWriter, r *http.Request, c client.Client, cfg *config.Config) {

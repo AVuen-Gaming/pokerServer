@@ -27,9 +27,9 @@ func NewServer(cfg *config.ServerConfig) *Server {
 func (s *Server) Start() {
 	addr := fmt.Sprintf(":%s", s.Config.Port)
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"}, // Cambia esto por el dominio de tu frontend
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedOrigins:   []string{s.Config.Allowedorigin},
+		AllowedMethods:   []string{"GET", "POST"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "Wallet-Address"},
 		AllowCredentials: true,
 	})
 	handler := corsMiddleware.Handler(s.Router)

@@ -20,17 +20,19 @@ services:
     image: nats:latest
     ports:
       - "4222:4222"
-      - "8222:8222"
     command: >
       -js
+      --c /path/to/nats-server.conf
     environment:
       - NATS_SERVER_NAME=nats-server
       - NATS_LOG_LEVEL=debug
       - NATS_JETSTREAM=true
     volumes:
       - nats-data:/data
+      - ./nats-server.conf:/path/to/nats-server.conf
     networks:
       - poker_network
+
 
   temporal:
     container_name: temporal

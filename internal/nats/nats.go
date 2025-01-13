@@ -8,8 +8,18 @@ import (
 )
 
 func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
-	address := fmt.Sprintf("%s:%d", cfg.NATS.Host, cfg.NATS.Port)
-	nc, err := nats.Connect(address)
+	address := fmt.Sprintf("nats://%s:%s@%s:%d", cfg.NATS.Username, cfg.NATS.Password, cfg.NATS.Host, cfg.NATS.Port)
+	opts := []nats.Option{
+		nats.Name("PokerServer"),
+		nats.ReconnectHandler(func(_ *nats.Conn) {
+			fmt.Println("Reconnected to NATS!")
+		}),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			fmt.Printf("Disconnected from NATS: %v\n", err)
+		}),
+	}
+
+	nc, err := nats.Connect(address, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}

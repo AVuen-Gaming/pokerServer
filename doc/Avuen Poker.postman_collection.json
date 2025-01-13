@@ -24,7 +24,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"name\": \"popiusito2525sssqsqsqsa4\",\n    \"registration_start_date\": \"2025-01-04T23:44:00Z\",\n    \"registration_end_date\": \"2025-01-04T23:44:00Z\",\n    \"start_date\": \"2025-01-04T23:44:00Z\",\n    \"entry_cost\": 0.01,\n    \"currency\": \"SepoliaETH\",\n    \"prize\": \"50000 USD\",\n    \"ongoing\": false,\n    \"start\": false,\n    \"configuration\": \"Texas Hold'em\",\n    \"min_players\": 2,\n    \"max_players\": 100,\n    \"turn_seconds\": 30,\n    \"start_chips\": 300,\n    \"bb_value\":    50\n}"
+					"raw": "{\n    \"name\": \"pilon3\",\n    \"registration_start_date\": \"2025-01-08T20:20:00Z\",\n    \"registration_end_date\": \"2025-01-08T20:20:00Z\",\n    \"start_date\": \"2025-01-08T20:20:00Z\",\n    \"entry_cost\": 1,\n    \"increment_blind\": 1,\n    \"currency\": \"SepoliaETH\",\n    \"prize\": \"50000 USD\",\n    \"ongoing\": false,\n    \"start\": false,\n    \"configuration\": \"Texas Hold'em\",\n    \"min_players\": 2,\n    \"max_players\": 100,\n    \"turn_seconds\": 5,\n    \"start_chips\": 300,\n    \"bb_value\":    20\n}"
 				},
 				"url": {
 					"raw": "http://localhost:7000/tournaments",
@@ -260,6 +260,43 @@
 						"tournamentRegistration",
 						"6",
 						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get TournamentAvailable",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer popio",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:7000/tournamentAvailableToStart/16",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "7000",
+					"path": [
+						"tournamentAvailableToStart",
+						"16"
 					]
 				}
 			},

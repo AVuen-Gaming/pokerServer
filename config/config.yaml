@@ -9,14 +9,19 @@ database:
 nats:
   host: "localhost"
   port: 4222
+  username: "user"
+  password: "password"
   stream:
     name: "mystream"
     subjects:
       - "subject1"
       - "subject2"
 
+
 server:
+  allowedorigin: "http://localhost:3000"
   port: "7000"
+
 
 temporal:
   hostport: "localhost:7233"

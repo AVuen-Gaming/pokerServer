@@ -30,7 +30,6 @@ const (
 )
 
 func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	log.Printf("Starting DealCardsActivity with table ID: %s", table.ID)
 	table.DealCards()
 
 	js := GetJetStream()
@@ -44,7 +43,6 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 	time.Sleep(2 * time.Second)
 	table.CurrentStage = StagePreFlop
 
-	log.Printf("Completed DealCardsActivity for table ID: %s", table.ID)
 	return table, nil
 }
 
@@ -148,9 +146,8 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
 		}
 
-		log.Printf("El turno es para el jugador %s", table.CurrentTurn)
-
-		subject := fmt.Sprintf("pokerClient.tournament.%s.%s", table.ID, player.ID) // cambiar tournament por tournament id
+		tournamentID := strconv.Itoa(table.TournamentID)
+		subject := fmt.Sprintf("pokerClient.%s.%s.%s", tournamentID, table.ID, player.ID)
 		consumerName := fmt.Sprintf("durable-consumer4-%s-%s", table.ID, player.ID)
 		msgChan := make(chan *nats.Msg, 64)
 
@@ -248,7 +245,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 			}
 		case <-time.After(time.Duration(table.TurnTime) * time.Second):
 			table.Players[currentIndex].IsTurn = false
-			log.Printf("El tiempo de turno para el jugador %s ha expirado", player.ID)
 			table.Players[currentIndex].LastAction = "fold"
 			table.Players[currentIndex].HasFold = true
 			if table.Players[currentIndex].CallAmount <= 0 {
@@ -293,7 +289,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	}
 	table.PlayerActedInRound = 0
 
-	log.Printf("Los turnos de los jugadores se han completado para la mesa ID: %s", table.ID)
 	return table, nil
 }
 
@@ -443,10 +438,6 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 		return tournament, errors.New("no existen registros para este torneo")
 	}
 
-	if len(tournamentRegistrations) < tournament.MinPlayers {
-		return tournament, errors.New("no se cumplen el minimo de players para el torneo")
-	}
-
 	var players []poker.Player
 	for _, registration := range tournamentRegistrations {
 		player := poker.Player{
@@ -493,6 +484,18 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 
 	tournament.Players = players
 	tournament.Tables = tables
+
+	if len(tournamentRegistrations) < 2 {
+		walletAddres := tables[0].Players[0].ID //control error
+		tournamentID := tables[0].TournamentID
+		walletId, _ := db.GetWalletIDByPlayerID(walletAddres) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+		position, _ := db.InsertRanking(tournamentID, walletId)
+		err := poker.HandlePlayerPrize(uint(tournamentID), position.Position, walletAddres)
+		if err != nil {
+			log.Printf("Error manejando premios para el jugador %s en posición %d: %v", walletAddres, position, err)
+		}
+		return tournament, errors.New("no se cumplen el minimo de players para el torneo")
+	}
 
 	return tournament, nil
 }

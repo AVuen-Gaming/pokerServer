@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"fmt"
 	"log"
 	"server/config"
 	"server/internal/db"
@@ -21,7 +22,8 @@ var (
 
 func StartWorker(cfg *config.Config) {
 	once.Do(func() {
-		natsConn, err := nats.Connect(cfg.NATS.Host)
+		address := fmt.Sprintf("nats://%s:%s@%s:%d", cfg.NATS.Username, cfg.NATS.Password, cfg.NATS.Host, cfg.NATS.Port)
+		natsConn, err := nats.Connect(address)
 		if err != nil {
 			log.Fatalf("Failed to connect to NATS: %v", err)
 		}

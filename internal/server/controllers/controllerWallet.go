@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"server/internal/db"
+
+	"github.com/gorilla/mux"
 )
 
 type WalletRequest struct {
@@ -15,14 +17,10 @@ type WalletResponse struct {
 }
 
 func GetWalletIDByAddress(w http.ResponseWriter, r *http.Request) {
-	var req WalletRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil || req.WalletAddress == "" {
-		http.Error(w, "Invalid request. Provide a valid wallet_address.", http.StatusBadRequest)
-		return
-	}
+	vars := mux.Vars(r)
+	wallet := vars["wallet"]
 
-	walletID, err := db.GetWalletIDByPlayerID(req.WalletAddress)
+	walletID, err := db.GetWalletIDByPlayerID(wallet)
 	if err != nil {
 		http.Error(w, "Wallet not found or error fetching wallet ID.", http.StatusNotFound)
 		return
