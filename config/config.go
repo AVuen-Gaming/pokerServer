@@ -3,8 +3,11 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -48,40 +51,55 @@ type TemporalConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	dir, err := os.Getwd()
-	if err == nil {
-		log.Printf("Current working directory: %s", dir)
-	}
-
-	configFile := "./config.yaml"
-
-	viper.SetConfigFile(configFile)
-	viper.AddConfigPath(".")
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AutomaticEnv()
-	viper.SetEnvPrefix("SERVER")
-	viper.SetDefault("nats.username", "user")
-	viper.SetDefault("nats.password", "password")
-	viper.SetDefault("server.allowedorigin", "http://localhost:3000") //cambiar por url productiva
-	viper.AddConfigPath("C:/opt/docker/pokersrv/config")
-
-	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("Error reading config file: %v", err)
+	// Cargar el archivo .env
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Error loading .env file: %v", err)
 		return nil, err
 	}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		log.Printf("Error unmarshalling config: %v", err)
+	// Construir la configuración
+	dbPort, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err != nil {
+		log.Printf("Invalid database port: %v", err)
 		return nil, err
 	}
 
-	if cfg.Server.Allowedorigin == "" {
-		cfg.Server.Allowedorigin = "http://localhost:3000"
+	natsPort, err := strconv.Atoi(os.Getenv("NATS_PORT"))
+	if err != nil {
+		log.Printf("Invalid NATS port: %v", err)
+		return nil, err
 	}
 
-	return &cfg, nil
+	config := &Config{
+		Database: DatabaseConfig{
+			Host:     os.Getenv("DB_HOST"),
+			Port:     dbPort,
+			User:     os.Getenv("DB_USER"),
+			Password: os.Getenv("DB_PASSWORD"),
+			DBName:   os.Getenv("DB_NAME"),
+			SSLMode:  os.Getenv("DB_SSLMODE"),
+		},
+		NATS: NATSConfig{
+			Host:     os.Getenv("NATS_HOST"),
+			Port:     natsPort,
+			Username: os.Getenv("NATS_USERNAME"),
+			Password: os.Getenv("NATS_PASSWORD"),
+			Stream: StreamConfig{
+				Name:     os.Getenv("NATS_STREAM_NAME"),
+				Subjects: strings.Split(os.Getenv("NATS_SUBJECTS"), ","),
+			},
+		},
+		Server: ServerConfig{
+			Port:          os.Getenv("SERVER_PORT"),
+			Allowedorigin: os.Getenv("SERVER_ALLOWED_ORIGIN"),
+		},
+		Temporal: TemporalConfig{
+			HostPort: os.Getenv("TEMPORAL_HOSTPORT"),
+		},
+	}
+
+	return config, nil
 }
 
 func init() {

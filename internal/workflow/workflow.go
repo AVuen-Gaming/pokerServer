@@ -220,6 +220,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if waitDuration > 0 {
 		err := workflow.Sleep(ctx, waitDuration)
 		if err != nil {
+			ctx.Done()
 			return tournament, err
 		}
 	}
@@ -229,6 +230,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
+		ctx.Done()
 		return tournament, err
 	}
 
@@ -236,6 +238,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
+		ctx.Done()
 		return tournament, err
 	}
 
@@ -244,6 +247,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if waitDuration > 0 {
 		err := workflow.Sleep(ctx, waitDuration)
 		if err != nil {
+			ctx.Done()
 			return tournament, err
 		}
 	}
@@ -252,6 +256,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
+		ctx.Done()
 		return tournament, err
 	}
 
@@ -259,6 +264,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
+		ctx.Done()
 		return tournament, err
 	}
 
@@ -268,13 +274,16 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)
+		ctx.Done()
 		return tournament, err
 	}
 	db.SetTournamentEndDate(tournament.ID)
 
 	err = db.UpdateTournamentOngoing(tournament.ID, false)
 	if err != nil {
+		ctx.Done()
 		return tournament, err
 	}
+	ctx.Done()
 	return tournament, nil
 }

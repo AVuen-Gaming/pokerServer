@@ -375,3 +375,82 @@ func convertToTournamentController(dto models.Tournament) poker.Tournament {
 		IncrementBlind:        dto.IncrementBlind,
 	}
 }
+
+func isValidTransaction(txHash string, senderWallet string, receiverWallet string, requiredAmount float64, endDate time.Time) bool {
+	apiKey := "YOUR_ETHERSCAN_API_KEY" // Reemplaza con tu clave API de Etherscan
+	url := fmt.Sprintf("https://api.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, apiKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Error calling Etherscan API:", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Etherscan API returned non-200 status:", resp.Status)
+		return false
+	}
+
+	var response struct {
+		Result struct {
+			From      string `json:"from"`
+			To        string `json:"to"`
+			Value     string `json:"value"` // El valor está en Wei como string hexadecimal
+			IsError   string `json:"isError"`
+			BlockTime string `json:"blockTime"` // Opcional: tiempo del bloque
+		} `json:"result"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		fmt.Println("Error decoding Etherscan response:", err)
+		return false
+	}
+
+	// Validar si la transacción fue exitosa.
+	if response.Result.IsError != "0" {
+		fmt.Println("Transaction failed.")
+		return false
+	}
+
+	// Validar el destinatario.
+	if response.Result.To != receiverWallet {
+		fmt.Println("Invalid receiver address.")
+		return false
+	}
+
+	// Convertir el valor de Wei a Ether.
+	valueInWei, err := hexToFloat(response.Result.Value)
+	if err != nil {
+		fmt.Println("Error converting value:", err)
+		return false
+	}
+
+	// Validar el monto mínimo requerido.
+	if valueInWei < requiredAmount {
+		fmt.Println("Insufficient amount transferred.")
+		return false
+	}
+
+	// Validar la fecha límite si el tiempo del bloque está disponible.
+	blockTimestamp, err := strconv.ParseInt(response.Result.BlockTime, 10, 64)
+	if err == nil {
+		blockTime := time.Unix(blockTimestamp, 0)
+		if blockTime.After(endDate) {
+			fmt.Println("Transaction occurred after the registration deadline.")
+			return false
+		}
+	}
+
+	return true
+}
+
+// hexToFloat convierte un valor hexadecimal en Wei a una representación decimal en Ether.
+func hexToFloat(hexValue string) (float64, error) {
+	value, err := strconv.ParseInt(hexValue, 0, 64)
+	if err != nil {
+		return 0, err
+	}
+	return float64(value) / 1e18, nil // Convertir Wei a Ether
+}

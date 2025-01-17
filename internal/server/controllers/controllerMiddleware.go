@@ -21,11 +21,11 @@ func GenerateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "Authorization",
+		Name:     "SessionToken",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true, //true en produccion y pasar por variable de entorno
-		Secure:   true,
+		HttpOnly: false, //true en produccion y pasar por variable de entorno
+		Secure:   false,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(15 * time.Minute),
 	})

@@ -13,6 +13,7 @@ type RankingDTO struct {
 	WalletID     uint `json:"wallet_id"`
 	TournamentID uint `json:"tournament_id"`
 	Position     int  `json:"position"`
+	TotalPlayers int  `json:"total_players"`
 }
 
 func GetRankingsByTournament(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +69,19 @@ func GetRankingByTournamentAndWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	registrations, err := db.GetTournamentRegistrationsByTournamentID(uint(tournamentID))
+	if err != nil {
+		http.Error(w, "Error fetching tournament registrations", http.StatusInternalServerError)
+		return
+	}
+
+	playerCount := len(registrations)
+
 	rankingDTO := RankingDTO{
 		WalletID:     ranking.WalletID,
 		TournamentID: ranking.TournamentID,
 		Position:     ranking.Position,
+		TotalPlayers: playerCount,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -63,17 +63,15 @@ func TestTableWorkflow(t *testing.T) {
 	w.RegisterActivity(ShowDown)
 	w.RegisterActivity(ShowDownAllFoldExecptOne)
 	w.RegisterActivity(CheckLastTable)
-	// Start worker
+
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
 			log.Fatalf("Failed to start worker: %v", err)
 		}
 	}()
 
-	// Wait for worker to be ready
-	time.Sleep(2 * time.Second) // Adjust sleep duration if needed
+	time.Sleep(2 * time.Second)
 
-	// Define test tables
 	table1 := poker.Table{
 		ID:                 "1",
 		BBValue:            100,

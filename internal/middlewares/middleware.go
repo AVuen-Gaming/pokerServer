@@ -19,6 +19,7 @@ var sessionTokens = struct {
 }
 
 var staticToken = "popio" //cambiar en produccion
+var sign = "dopaskdpoas"
 
 type SessionData struct {
 	Token     string
@@ -31,7 +32,7 @@ func GenerateSessionToken(walletAddress string) (string, error) {
 		"exp":           time.Now().Add(15 * time.Minute).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte("popio"))
+	signedToken, err := token.SignedString([]byte(sign))
 	if err != nil {
 		return "", err
 	}
@@ -58,12 +59,6 @@ func ValidateSessionToken(token, walletAddress string) bool {
 	if exists && session.Token == token && session.ExpiresAt.After(time.Now()) {
 		return true
 	}
-
-	//for _, session := range sessionTokens.tokens { //aca
-	//	if session.Token == token && session.ExpiresAt.After(time.Now()) {
-	//		return true
-	//	}
-	//}
 	return false
 }
 
@@ -80,27 +75,26 @@ func GetTokenByWallet(walletAddress string) (string, error) {
 
 func SessionTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("Authorization")
+		cookie, err := r.Cookie("SessionToken")
 		if err != nil || cookie.Value == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized: Missing session token", http.StatusUnauthorized)
 			return
 		}
 
 		wallet := r.Header.Get("Wallet-Address")
 		if wallet == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized: Missing wallet address", http.StatusUnauthorized)
 			return
 		}
 
 		if !ValidateWallet(wallet) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized: Invalid wallet address", http.StatusUnauthorized)
 			return
 		}
 
 		token := cookie.Value
-		valid := ValidateSessionToken(token, wallet)
-		if !valid {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		if !ValidateSessionToken(token, wallet) {
+			http.Error(w, "Unauthorized: Invalid session token", http.StatusUnauthorized)
 			return
 		}
 
