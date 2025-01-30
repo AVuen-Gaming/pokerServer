@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
+	"golang.org/x/time/rate"
 )
 
 var sessionTokens = struct {
@@ -18,15 +19,58 @@ var sessionTokens = struct {
 	tokens: make(map[string]SessionData),
 }
 
-var staticToken = "popio" //cambiar en produccion
-var sign = "dopaskdpoas"
-
 type SessionData struct {
 	Token     string
 	ExpiresAt time.Time
 }
 
-func GenerateSessionToken(walletAddress string) (string, error) {
+type RateLimiter struct {
+	limiterMap map[string]*rate.Limiter
+	mu         sync.Mutex
+	rate       rate.Limit
+	burst      int
+}
+
+func NewRateLimiter(r rate.Limit, b int) *RateLimiter {
+	return &RateLimiter{
+		limiterMap: make(map[string]*rate.Limiter),
+		rate:       r,
+		burst:      b,
+	}
+}
+
+func (rl *RateLimiter) getLimiter(walletAddress string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if _, exists := rl.limiterMap[walletAddress]; !exists {
+		rl.limiterMap[walletAddress] = rate.NewLimiter(rl.rate, rl.burst)
+	}
+
+	return rl.limiterMap[walletAddress]
+}
+
+func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			walletAddress := r.Header.Get("Wallet-Address")
+			if walletAddress == "" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			limiter := rl.getLimiter(walletAddress)
+			if !limiter.Allow() {
+				http.Error(w, "Too many requests", http.StatusTooManyRequests)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func GenerateSessionToken(walletAddress, sign string) (string, error) {
 	claims := jwt.MapClaims{
 		"walletAddress": walletAddress,
 		"exp":           time.Now().Add(15 * time.Minute).Unix(),
@@ -77,24 +121,24 @@ func SessionTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("SessionToken")
 		if err != nil || cookie.Value == "" {
-			http.Error(w, "Unauthorized: Missing session token", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		wallet := r.Header.Get("Wallet-Address")
 		if wallet == "" {
-			http.Error(w, "Unauthorized: Missing wallet address", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		if !ValidateWallet(wallet) {
-			http.Error(w, "Unauthorized: Invalid wallet address", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		token := cookie.Value
 		if !ValidateSessionToken(token, wallet) {
-			http.Error(w, "Unauthorized: Invalid session token", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -153,20 +197,22 @@ func OriginValidationMiddleware(allowedOrigin string) mux.MiddlewareFunc {
 	}
 }
 
-func JWTAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "No autorizado", http.StatusUnauthorized)
-			return
-		}
+func JWTAuthMiddleware(staticToken string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "No autorizado", http.StatusUnauthorized)
+				return
+			}
 
-		token := strings.Split(authHeader, " ")[1]
-		if token != staticToken {
-			http.Error(w, "Token inválido", http.StatusUnauthorized)
-			return
-		}
+			token := strings.Split(authHeader, " ")[1]
+			if token != staticToken {
+				http.Error(w, "Token inválido", http.StatusUnauthorized)
+				return
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }

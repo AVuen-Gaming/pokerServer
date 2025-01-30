@@ -36,6 +36,13 @@ type StreamConfig struct {
 type ServerConfig struct {
 	Port          string `mapstructure:"port"`
 	Allowedorigin string `mapstructure:"allowedorigin"`
+	StaticToken   string `mapstructure:"statictoken"`
+	Sign          string `mapstructure:"sign"`
+	HttpOnly      bool   `mapstructure:"httponly"`
+	Secure        bool   `mapstructure:"secure"`
+	Wallet        string `mapstructure:"wallet"`
+	SepApiKey     string `mapstructure:"sepapikey"`
+	BcsApiKey     string `mapstructure:"bcsapikey"`
 	Router        *mux.Router
 }
 
@@ -51,14 +58,12 @@ type TemporalConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	// Cargar el archivo .env
 	err := godotenv.Load()
 	if err != nil {
 		log.Printf("Error loading .env file: %v", err)
 		return nil, err
 	}
 
-	// Construir la configuración
 	dbPort, err := strconv.Atoi(os.Getenv("DB_PORT"))
 	if err != nil {
 		log.Printf("Invalid database port: %v", err)
@@ -69,6 +74,18 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		log.Printf("Invalid NATS port: %v", err)
 		return nil, err
+	}
+	httpOnlyEnv := os.Getenv("HTTP_ONLY")
+	secureEnv := os.Getenv("SECURE")
+
+	httpOnly := false
+	if httpOnlyEnv != "" {
+		httpOnly, _ = strconv.ParseBool(httpOnlyEnv)
+	}
+
+	secure := false
+	if secureEnv != "" {
+		secure, _ = strconv.ParseBool(secureEnv)
 	}
 
 	config := &Config{
@@ -93,6 +110,13 @@ func LoadConfig() (*Config, error) {
 		Server: ServerConfig{
 			Port:          os.Getenv("SERVER_PORT"),
 			Allowedorigin: os.Getenv("SERVER_ALLOWED_ORIGIN"),
+			StaticToken:   os.Getenv("STATIC_TOKEN"),
+			Sign:          os.Getenv("Sign"),
+			HttpOnly:      httpOnly,
+			Secure:        secure,
+			Wallet:        os.Getenv("Wallet"),
+			SepApiKey:     os.Getenv("SepApiKey"),
+			BcsApiKey:     os.Getenv("BcsApiKey"),
 		},
 		Temporal: TemporalConfig{
 			HostPort: os.Getenv("TEMPORAL_HOSTPORT"),

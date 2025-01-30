@@ -10,6 +10,7 @@ import (
 	"server/internal/poker"
 	temporal "server/internal/workflow"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,8 +40,9 @@ type TournamentDTO struct {
 }
 
 type TournamentRegistrationDTO struct {
-	TournamentID  uint   `json:"tournament_id"`
-	WalletAddress string `json:"wallet"`
+	TournamentID    uint   `json:"tournament_id"`
+	WalletAddress   string `json:"wallet"`
+	TransactionHash string `json:"transaction_hash"`
 }
 
 type RegistrationAvailabilityDTO struct {
@@ -167,11 +169,17 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tournaments)
 }
 
-func RegisterUserToTournament(w http.ResponseWriter, r *http.Request) {
+func RegisterUserToTournament(w http.ResponseWriter, r *http.Request, cfg *config.ServerConfig) {
 	var req TournamentRegistrationDTO
+	valid := false
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		return
+	}
+
+	if req.TransactionHash == "" {
+		http.Error(w, "Invalid Hash", http.StatusInternalServerError)
 		return
 	}
 
@@ -205,6 +213,17 @@ func RegisterUserToTournament(w http.ResponseWriter, r *http.Request) {
 
 	if isRegistered {
 		http.Error(w, "User already registered for the tournament", http.StatusConflict)
+		return
+	}
+
+	if tournament.Currency == "usdt" {
+		valid = isValidTransactionBsc(req.TransactionHash, req.WalletAddress, float64(tournament.EntryCost), cfg)
+	} else if tournament.Currency == "sepolia" {
+		valid = isValidTransactionSepolia(req.TransactionHash, req.WalletAddress, float64(tournament.EntryCost), cfg)
+	}
+
+	if !valid {
+		http.Error(w, "invalid transaction", http.StatusConflict)
 		return
 	}
 
@@ -376,81 +395,252 @@ func convertToTournamentController(dto models.Tournament) poker.Tournament {
 	}
 }
 
-func isValidTransaction(txHash string, senderWallet string, receiverWallet string, requiredAmount float64, endDate time.Time) bool {
-	apiKey := "YOUR_ETHERSCAN_API_KEY" // Reemplaza con tu clave API de Etherscan
-	url := fmt.Sprintf("https://api.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, apiKey)
+func isValidTransactionBsc(txHash string, senderWallet string, requiredAmount float64, config *config.ServerConfig) bool {
+	url := fmt.Sprintf("https://api.bscscan.com/api?module=account&action=tokentx&txhash=%s&apikey=%s", txHash, config.BcsApiKey)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Error calling Etherscan API:", err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Etherscan API returned non-200 status:", resp.Status)
 		return false
 	}
 
 	var response struct {
-		Result struct {
-			From      string `json:"from"`
-			To        string `json:"to"`
-			Value     string `json:"value"` // El valor está en Wei como string hexadecimal
-			IsError   string `json:"isError"`
-			BlockTime string `json:"blockTime"` // Opcional: tiempo del bloque
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Result  []struct {
+			From        string `json:"from"`
+			To          string `json:"to"`
+			Value       string `json:"value"`
+			Contract    string `json:"contractAddress"`
+			BlockNumber string `json:"blockNumber"`
 		} `json:"result"`
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
-		fmt.Println("Error decoding Etherscan response:", err)
 		return false
 	}
 
-	// Validar si la transacción fue exitosa.
-	if response.Result.IsError != "0" {
-		fmt.Println("Transaction failed.")
+	if len(response.Result) == 0 {
 		return false
 	}
 
-	// Validar el destinatario.
-	if response.Result.To != receiverWallet {
-		fmt.Println("Invalid receiver address.")
+	tx := response.Result[0]
+
+	senderWallet = strings.ToLower(senderWallet)
+	receiverWallet := strings.ToLower(config.Wallet)
+	txSender := strings.ToLower(tx.From)
+	txReceiver := strings.ToLower(tx.To)
+
+	if txSender != senderWallet {
 		return false
 	}
 
-	// Convertir el valor de Wei a Ether.
-	valueInWei, err := hexToFloat(response.Result.Value)
+	if txReceiver != receiverWallet {
+		return false
+	}
+
+	valueInUSDT, err := strconv.ParseFloat(tx.Value, 64)
 	if err != nil {
-		fmt.Println("Error converting value:", err)
+		return false
+	}
+	valueInUSDT /= 1e6 // UST tiene 6 decimales en BSC
+
+	txDetailsURL := fmt.Sprintf("https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, config.BcsApiKey)
+	txDetailsResp, err := http.Get(txDetailsURL)
+	if err != nil {
+		fmt.Println("Error llamando a BscScan API para obtener detalles de la transacción:", err)
+		return false
+	}
+	defer txDetailsResp.Body.Close()
+
+	if txDetailsResp.StatusCode != http.StatusOK {
+		fmt.Println("BscScan API devolvió un código de estado no válido para detalles de la transacción:", txDetailsResp.Status)
 		return false
 	}
 
-	// Validar el monto mínimo requerido.
-	if valueInWei < requiredAmount {
-		fmt.Println("Insufficient amount transferred.")
+	var txDetails struct {
+		Result struct {
+			Gas      string `json:"gas"`
+			GasPrice string `json:"gasPrice"`
+		} `json:"result"`
+	}
+
+	err = json.NewDecoder(txDetailsResp.Body).Decode(&txDetails)
+	if err != nil {
 		return false
 	}
 
-	// Validar la fecha límite si el tiempo del bloque está disponible.
-	blockTimestamp, err := strconv.ParseInt(response.Result.BlockTime, 10, 64)
-	if err == nil {
-		blockTime := time.Unix(blockTimestamp, 0)
-		if blockTime.After(endDate) {
-			fmt.Println("Transaction occurred after the registration deadline.")
-			return false
-		}
+	gasUsed, err := strconv.ParseInt(txDetails.Result.Gas, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	gasPrice, err := strconv.ParseInt(txDetails.Result.GasPrice, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	gasCostInBNB := float64(gasUsed*gasPrice) / 1e18
+
+	totalSpent := valueInUSDT + gasCostInBNB
+	if totalSpent < requiredAmount {
+		return false
+	}
+
+	blockURL := fmt.Sprintf("https://api.bscscan.com/api?module=proxy&action=eth_getBlockByNumber&tag=%s&boolean=true&apikey=%s", tx.BlockNumber, config.BcsApiKey)
+	blockResp, err := http.Get(blockURL)
+	if err != nil {
+		return false
+	}
+	defer blockResp.Body.Close()
+
+	if blockResp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	var blockResponse struct {
+		Result struct {
+			Timestamp string `json:"timestamp"`
+		} `json:"result"`
+	}
+
+	err = json.NewDecoder(blockResp.Body).Decode(&blockResponse)
+	if err != nil || blockResponse.Result.Timestamp == "" {
+		fmt.Println("Error al obtener el timestamp del bloque.")
+		return false
+	}
+
+	blockTimestamp, err := strconv.ParseInt(blockResponse.Result.Timestamp, 0, 64)
+	if err != nil {
+		fmt.Println("Error al convertir el timestamp de la transacción.")
+		return false
+	}
+
+	now := time.Now().Unix()
+	allowedTime := now - 300 // cambiar margen
+
+	if blockTimestamp < allowedTime {
+		return false
 	}
 
 	return true
 }
 
-// hexToFloat convierte un valor hexadecimal en Wei a una representación decimal en Ether.
+func isValidTransactionSepolia(txHash string, senderWallet string, requiredAmount float64, config *config.ServerConfig) bool {
+	url := fmt.Sprintf("https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, config.SepApiKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	var txResponse struct {
+		Result struct {
+			From        string `json:"from"`
+			To          string `json:"to"`
+			Value       string `json:"value"`
+			Gas         string `json:"gas"`
+			GasPrice    string `json:"gasPrice"`
+			BlockNumber string `json:"blockNumber"`
+		} `json:"result"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&txResponse)
+	if err != nil {
+		return false
+	}
+
+	if txResponse.Result.From == "" || txResponse.Result.To == "" || txResponse.Result.BlockNumber == "" {
+		return false
+	}
+
+	senderWallet = strings.ToLower(senderWallet)
+	receiverWallet := strings.ToLower(config.Wallet)
+	txSender := strings.ToLower(txResponse.Result.From)
+	txReceiver := strings.ToLower(txResponse.Result.To)
+
+	if txSender != senderWallet {
+		return false
+	}
+
+	if txReceiver != receiverWallet {
+		return false
+	}
+
+	valueInWei, err := strconv.ParseInt(txResponse.Result.Value, 0, 64)
+	if err != nil {
+		return false
+	}
+	valueInEther := float64(valueInWei) / 1e18
+
+	gasUsed, err := strconv.ParseInt(txResponse.Result.Gas, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	gasPrice, err := strconv.ParseInt(txResponse.Result.GasPrice, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	gasCostInEther := float64(gasUsed*gasPrice) / 1e18
+	totalSpent := valueInEther + gasCostInEther
+
+	if totalSpent < requiredAmount {
+		return false
+	}
+
+	blockURL := fmt.Sprintf("https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getBlockByNumber&tag=%s&boolean=true&apikey=%s", txResponse.Result.BlockNumber, config.SepApiKey)
+	blockResp, err := http.Get(blockURL)
+	if err != nil {
+		return false
+	}
+	defer blockResp.Body.Close()
+
+	if blockResp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	var blockResponse struct {
+		Result struct {
+			Timestamp string `json:"timestamp"`
+		} `json:"result"`
+	}
+
+	err = json.NewDecoder(blockResp.Body).Decode(&blockResponse)
+	if err != nil || blockResponse.Result.Timestamp == "" {
+		return false
+	}
+
+	blockTimestamp, err := strconv.ParseInt(blockResponse.Result.Timestamp, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	now := time.Now().Unix()
+	allowedTime := now - 300
+
+	if blockTimestamp < allowedTime {
+		return false
+	}
+
+	return true
+}
+
 func hexToFloat(hexValue string) (float64, error) {
 	value, err := strconv.ParseInt(hexValue, 0, 64)
 	if err != nil {
 		return 0, err
 	}
-	return float64(value) / 1e18, nil // Convertir Wei a Ether
+	return float64(value) / 1e18, nil
 }

@@ -11,22 +11,28 @@ import (
 )
 
 func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
+	rateLimiter := middlewares.NewRateLimiter(2, 5)
+
 	protectedRoutes := r.PathPrefix("/").Subrouter()
 	publicRoutes := r.PathPrefix("/").Subrouter()
 	adminRoutes := r.PathPrefix("/").Subrouter()
-	adminRoutes.Use(middlewares.JWTAuthMiddleware)
+	adminRoutes.Use(middlewares.JWTAuthMiddleware(cfg.Server.StaticToken))
 	publicRoutes.Use(middlewares.OriginValidationMiddleware(cfg.Server.Allowedorigin))
 	//protectedRoutes.Use(middlewares.JWTAuthMiddleware)
 	protectedRoutes.Use(middlewares.OriginValidationMiddleware(cfg.Server.Allowedorigin))
 	protectedRoutes.Use(middlewares.SessionTokenMiddleware)
 	protectedRoutes.Use(middlewares.WalletValidationMiddleware)
+	protectedRoutes.Use(middlewares.RateLimitMiddleware(rateLimiter))
+	publicRoutes.Use(middlewares.RateLimitMiddleware(rateLimiter))
 	protectedRoutes.HandleFunc("/health", HealthCheckHandler).Methods("GET")
 	adminRoutes.HandleFunc("/tournaments", func(w http.ResponseWriter, r *http.Request) {
 		controllers.CreateTournament(w, r, c, cfg)
 	}).Methods("POST")
 	//tournaments
 	protectedRoutes.HandleFunc("/tournaments", controllers.GetTournaments).Methods("GET")
-	protectedRoutes.HandleFunc("/tournament/register", controllers.RegisterUserToTournament).Methods("POST")
+	protectedRoutes.HandleFunc("/tournament/register", func(w http.ResponseWriter, r *http.Request) {
+		controllers.RegisterUserToTournament(w, r, &cfg.Server)
+	}).Methods("POST")
 	protectedRoutes.HandleFunc("/tournament/register/available/{tournamentID}/{walletID}", controllers.CheckTournamentRegistrationAvailability).Methods("GET")
 	protectedRoutes.HandleFunc("/tournament/{wallet}", controllers.GetAvailableTournamentsByWallet).Methods("GET") //cambiar por tournaments
 	protectedRoutes.HandleFunc("/tournaments/ongoing/{wallet}", controllers.GetOngoingTournamentsHandler).Methods("GET")
@@ -48,7 +54,9 @@ func DefineRoutes(r *mux.Router, c client.Client, cfg *config.Config) {
 	//prizes
 	protectedRoutes.HandleFunc("/prizes/{tournamentID}", controllers.GetPrizeByTournamentID).Methods("GET")
 	//middleware publico
-	publicRoutes.HandleFunc("/generate-token", controllers.GenerateTokenHandler).Methods("GET")
+	publicRoutes.HandleFunc("/generate-token", func(w http.ResponseWriter, r *http.Request) {
+		controllers.GenerateTokenHandler(w, r, cfg.Server)
+	}).Methods("GET")
 }
 
 func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {

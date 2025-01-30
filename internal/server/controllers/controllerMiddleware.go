@@ -3,18 +3,19 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"server/config"
 	"server/internal/middlewares"
 	"time"
 )
 
-func GenerateTokenHandler(w http.ResponseWriter, r *http.Request) {
+func GenerateTokenHandler(w http.ResponseWriter, r *http.Request, config config.ServerConfig) {
 	walletAddress := r.Header.Get("Wallet-Address")
 	if walletAddress == "" {
 		http.Error(w, "Wallet address required", http.StatusBadRequest)
 		return
 	}
 
-	token, err := middlewares.GenerateSessionToken(walletAddress)
+	token, err := middlewares.GenerateSessionToken(walletAddress, config.Sign)
 	if err != nil {
 		http.Error(w, "Error generating token", http.StatusInternalServerError)
 		return
@@ -24,8 +25,8 @@ func GenerateTokenHandler(w http.ResponseWriter, r *http.Request) {
 		Name:     "SessionToken",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: false, //true en produccion y pasar por variable de entorno
-		Secure:   false,
+		HttpOnly: config.HttpOnly,
+		Secure:   config.Secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(15 * time.Minute),
 	})
