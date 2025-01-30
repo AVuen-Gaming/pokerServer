@@ -628,19 +628,11 @@ func isValidTransactionSepolia(txHash string, senderWallet string, requiredAmoun
 	}
 
 	now := time.Now().Unix()
-	allowedTime := now - 300
+	allowedTime := now - 300 // cambiar margen
 
 	if blockTimestamp < allowedTime {
 		return false
 	}
 
 	return true
-}
-
-func hexToFloat(hexValue string) (float64, error) {
-	value, err := strconv.ParseInt(hexValue, 0, 64)
-	if err != nil {
-		return 0, err
-	}
-	return float64(value) / 1e18, nil
 }
