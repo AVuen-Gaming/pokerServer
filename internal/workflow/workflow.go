@@ -10,100 +10,25 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+const MaxRoundsBeforeReset = 10
+
 func PlayerWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) {
-	SecTable := poker.Table{}
+
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Minute * 5,
+		StartToCloseTimeout: time.Minute * 30,
 	}
+
+	if table.Frozen {
+		err := workflow.Sleep(ctx, 15*time.Second)
+		if err != nil {
+			return table, err
+		}
+		return table, nil
+	}
+
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
-	err := workflow.ExecuteActivity(ctx, DealPreFlop, &table, config).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	err = workflow.ExecuteActivity(ctx, DealCardsActivity, &table, config).Get(ctx, &SecTable)
-	if err != nil {
-		return table, err
-	}
-	table.CurrentStage = StagePreFlop
-
-	err = workflow.ExecuteActivity(ctx, HandleTurns, &table).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	if table.AllFoldExceptOne {
-		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
-		if err != nil {
-			return table, err
-		}
-		return table, nil //ver premios
-	}
-
-	table.FlopCards = SecTable.FlopCards
-
-	err = workflow.ExecuteActivity(ctx, DealFlop, &table, config).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	err = workflow.ExecuteActivity(ctx, HandleTurns, &table).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	if table.AllFoldExceptOne {
-		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
-		if err != nil {
-			return table, err
-		}
-		return table, nil //ver premios
-	}
-
-	table.TurnCard = SecTable.TurnCard
-
-	err = workflow.ExecuteActivity(ctx, DealTurn, &table, config).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	err = workflow.ExecuteActivity(ctx, HandleTurns, &table).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	if table.AllFoldExceptOne {
-		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
-		if err != nil {
-			return table, err
-		}
-		return table, nil //ver premios
-	}
-
-	table.RiverCard = SecTable.RiverCard
-
-	err = workflow.ExecuteActivity(ctx, DealRiver, &table, config).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	err = workflow.ExecuteActivity(ctx, HandleTurns, &table).Get(ctx, &table)
-	if err != nil {
-		return table, err
-	}
-
-	if table.AllFoldExceptOne {
-		err = workflow.ExecuteActivity(ctx, ShowDownAllFoldExecptOne, &table).Get(ctx, &table)
-		if err != nil {
-			return table, err
-		}
-		return table, nil //ver premios
-	}
-
-	table.AssignPlayerCardsFromSecTable(&SecTable)
-
-	err = workflow.ExecuteActivity(ctx, ShowDown, &table).Get(ctx, &table)
+	err := workflow.ExecuteActivity(ctx, HandleTableActivitie, &table, config).Get(ctx, &table)
 	if err != nil {
 		return table, err
 	}
@@ -111,7 +36,7 @@ func PlayerWorkflow(ctx workflow.Context, table poker.Table, config *config.Conf
 	return table, nil
 }
 
-func RoundWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) {
+func RoundWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) { //use in future?
 	table.Round++
 
 	we1 := workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, table, config)
@@ -124,7 +49,7 @@ func RoundWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 	return table, nil
 }
 
-func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) {
+func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) { //use in future?
 
 	we1 := workflow.ExecuteChildWorkflow(ctx, RoundWorkflow, table, config)
 
@@ -138,21 +63,21 @@ func TableWorkflow(ctx workflow.Context, table poker.Table, config *config.Confi
 
 func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *config.Config) ([]poker.Table, error) {
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Minute * 5,
+		StartToCloseTimeout: time.Minute * 2000,
 	}
-	tournamentEnds := false
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 	childWorkflows := make(map[string]workflow.Future)
+	js := GetJetStream()
 
 	for i := 0; i < len(tables); i++ {
-		we1 := workflow.ExecuteChildWorkflow(ctx, TableWorkflow, tables[i], config)
+		we1 := workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, tables[i], config)
 		childWorkflows[tables[i].ID] = we1
 	}
 
 	for len(childWorkflows) > 0 {
 		selector := workflow.NewSelector(ctx)
 
-		err := workflow.ExecuteActivity(ctx, CheckLastTable, &tables, config).Get(ctx, &tournamentEnds)
+		tournamentEnds, err := poker.CheckLastTableInTables(tables, js)
 		if err != nil {
 			return tables, err
 		}
@@ -175,11 +100,7 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 						}
 					}
 
-					err = workflow.ExecuteActivity(ctx, Reshuffle, &tables, updatedTable, config).Get(ctx, &tables)
-					if err != nil {
-						workflow.GetLogger(ctx).Error("Reshuffle activity failed", "error", err)
-						return
-					}
+					tables = poker.Reshuffle(tables, updatedTable, js)
 
 					updatedTable, foundTable := poker.GetTableByID(tables, updatedTable.ID)
 
@@ -188,7 +109,7 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 							delete(childWorkflows, id)
 						}
 						if foundTable {
-							childWorkflows[id] = workflow.ExecuteChildWorkflow(ctx, TableWorkflow, updatedTable, config)
+							childWorkflows[id] = workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, updatedTable, config)
 						}
 					}
 				} else {
@@ -204,7 +125,7 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 
 func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournament, config *config.Config) (poker.Tournament, error) {
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Minute * 5,
+		StartToCloseTimeout: time.Minute * 2000,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second * 5,
 			MaximumInterval:    time.Minute,
@@ -227,6 +148,7 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 
 	now = workflow.Now(ctx)
 	err := workflow.ExecuteActivity(ctx, CreatePrizePool, &tournament, config).Get(ctx, &tournament)
+
 	if err != nil {
 		db.UpdateTournamentOngoing(tournament.ID, false)
 		db.SetTournamentEndDate(tournament.ID)

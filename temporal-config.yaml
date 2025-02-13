@@ -1,0 +1,24 @@
+frontend:
+  maxPayloadSize: 16777216 # 16 MB en bytes
+  maxConcurrentBatchOperationPerNamespace: 1000000
+
+history:
+  maxPayloadSize: 16777216 # 16 MB en bytes
+  maxConcurrentWorkflowTaskExecutionSize: 1000000
+  maxHistoryLength: 100000000
+  maxHistorySizeKB: 102400000 
+  historyArchivalState: disabled
+  historyArchivalURI: ""
+
+matching:
+  maxPayloadSize: 16777216 # 16 MB en bytes
+  maxConcurrentActivityTaskExecutionSize: 1000000
+
+namespaceDefaults:
+  archival:
+    history:
+      state: "enabled"
+      uri: "file:///var/lib/temporal/archive"
+    visibility:
+      state: "enabled"
+      uri: "file:///var/lib/temporal/visibility"

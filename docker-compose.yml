@@ -1,6 +1,7 @@
 version: '3.9'
 
 services:
+
   postgres:
     container_name: pokerPSQL
     image: postgres:14-alpine
@@ -46,6 +47,9 @@ services:
       - POSTGRES_SEEDS=postgres
       - PROMETHEUS_ENDPOINT=0.0.0.0:8000
     image: temporalio/auto-setup:1.21.1
+    volumes:
+      - tempora-data:/data
+      - ./temporal-config.yaml:/etc/temporal/config.yaml  
     networks:
       - poker_network
     ports:
@@ -80,6 +84,7 @@ services:
 volumes:
   nats-data:
   postgres_data:
+  tempora-data:
 
 networks:
   poker_network:

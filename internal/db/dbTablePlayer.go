@@ -65,3 +65,29 @@ func DeleteTablePlayerByTableAndTournament(tableID int, tournamentID int) error 
 
 	return nil
 }
+
+func DeleteTablePlayerByWalletAddress(tableID int, tournamentID int, walletAddress string) error {
+	wallet, err := GetWalletByAddress(walletAddress)
+	if err != nil {
+		return errors.New("error deleting table player for the specified table, tournament and wallet address")
+	}
+	result := DB.Where("table_id = ? AND tournament_id = ? AND wallet_id = ?", tableID, tournamentID, wallet.ID).Delete(&models.TablePlayer{})
+	if result.Error != nil {
+		return errors.New("error deleting table player for the specified table, tournament and wallet address")
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("no rows affected, check table_id, tournament_id, and wallet address")
+	}
+	return nil
+}
+
+func DeleteTablePlayerByWalletID(tableID int, tournamentID int, walletID uint) error {
+	result := DB.Where("table_id = ? AND tournament_id = ? AND wallet_id = ?", tableID, tournamentID, walletID).Delete(&models.TablePlayer{})
+	if result.Error != nil {
+		return errors.New("error deleting table player for the specified table, tournament and wallet address")
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("no rows affected, check table_id, tournament_id, and wallet address")
+	}
+	return nil
+}

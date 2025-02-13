@@ -68,3 +68,12 @@ func GetRankingByTournamentAndWallet(tournamentID uint, walletID uint) (*models.
 
 	return &ranking, nil
 }
+
+func RankingExists(tournamentID int, walletId uint) (bool, error) {
+	var count int64
+	err := DB.Model(&models.Ranking{}).Where("tournament_id = ? AND wallet_id = ?", tournamentID, walletId).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

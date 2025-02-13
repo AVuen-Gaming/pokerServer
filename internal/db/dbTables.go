@@ -45,3 +45,14 @@ func GetTablesByTournamentID(tournamentID uint) ([]models.Table, error) {
 	}
 	return tables, nil
 }
+
+func DeleteTableByTableAndTournament(tableID int, tournamentID int) error {
+	result := DB.Where("id = ? AND tournament_id = ?", tableID, tournamentID).Delete(&models.Table{})
+	if result.Error != nil {
+		return errors.New("error deleting table for the specified table and tournament")
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("no rows affected, check table_id and tournament_id")
+	}
+	return nil
+}

@@ -14,6 +14,12 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"go.temporal.io/api/common/v1"
+	"go.temporal.io/api/workflowservice/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -30,7 +36,7 @@ const (
 )
 
 func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.DealCards()
+	//table.DealCards()
 
 	js := GetJetStream()
 	for _, player := range table.Players {
@@ -46,7 +52,9 @@ func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.C
 	return table, nil
 }
 
-func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
+func HandleTableActivitie(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
+	SecTable := poker.Table{}
+	table.Round++
 	table.CurrentStage = StageInitRound
 	table.SMBBTurn()
 	table.RemovePlayersEliminatedWithNoChips()
@@ -60,7 +68,170 @@ func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config)
 	}
 
 	time.Sleep(2 * time.Second)
+	//DEAL CARDS
+	SecTable.Players = table.Players
+	SecTable.ID = table.ID
+	SecTable.TournamentID = table.TournamentID
+	SecTable.DealCards(js)
 
+	time.Sleep(2 * time.Second)
+	table.CurrentStage = StagePreFlop
+	//HANDLETURNS
+
+	table.HandleTurn(ctx, js)
+
+	time.Sleep(2 * time.Second)
+
+	//CHECKSHOWDOWN
+	if table.AllFoldExceptOne {
+		table.CurrentStage = StageShowDownAllFoldExceptOne
+		table.UpdateTotalBetForFold()
+		table.AssignChipsToWinners()
+		err := poker.SendPTableUpdateToNATS(js, table)
+		if err != nil {
+			return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+		}
+		table.ClearPlayerActions()
+		table.ClearTableActions()
+		table.SetEliminatePlayersWithNoChips()
+
+		if len(table.Winners) > 0 {
+			log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
+		} else {
+			log.Printf("No se pudo determinar un ganador en EvaluateHand")
+		}
+
+		return table, nil
+	}
+
+	//FLOP
+	table.FlopCards = SecTable.FlopCards
+	table.CurrentStage = StageFlop
+	time.Sleep(2 * time.Second)
+
+	//HANDLETURN
+	table.HandleTurn(ctx, js)
+	time.Sleep(2 * time.Second)
+
+	//CHECKSHOWDOWN
+	if table.AllFoldExceptOne {
+		table.CurrentStage = StageShowDownAllFoldExceptOne
+		table.UpdateTotalBetForFold()
+		table.AssignChipsToWinners()
+		err := poker.SendPTableUpdateToNATS(js, table)
+		if err != nil {
+			return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+		}
+		table.ClearPlayerActions()
+		table.ClearTableActions()
+		table.SetEliminatePlayersWithNoChips()
+
+		if len(table.Winners) > 0 {
+			log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
+		} else {
+			log.Printf("No se pudo determinar un ganador en EvaluateHand")
+		}
+
+		return table, nil
+	}
+
+	//TURN
+	table.TurnCard = SecTable.TurnCard
+	table.CurrentStage = StageTurn
+	time.Sleep(2 * time.Second)
+
+	//HANDLETURN
+	table.HandleTurn(ctx, js)
+	time.Sleep(2 * time.Second)
+
+	//CHECKSHOWDOWN
+	if table.AllFoldExceptOne {
+		table.CurrentStage = StageShowDownAllFoldExceptOne
+		table.UpdateTotalBetForFold()
+		table.AssignChipsToWinners()
+		err := poker.SendPTableUpdateToNATS(js, table)
+		if err != nil {
+			return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+		}
+		table.ClearPlayerActions()
+		table.ClearTableActions()
+		table.SetEliminatePlayersWithNoChips()
+
+		if len(table.Winners) > 0 {
+			log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
+		} else {
+			log.Printf("No se pudo determinar un ganador en EvaluateHand")
+		}
+
+		return table, nil
+	}
+
+	//RIVER
+	table.RiverCard = SecTable.RiverCard
+	table.CurrentStage = StageRiver
+	time.Sleep(2 * time.Second)
+
+	//HANDLETURN
+	table.HandleTurn(ctx, js)
+	time.Sleep(2 * time.Second)
+
+	//CHECKSHOWDOWN
+	if table.AllFoldExceptOne {
+		table.CurrentStage = StageShowDownAllFoldExceptOne
+		table.UpdateTotalBetForFold()
+		table.AssignChipsToWinners()
+		err := poker.SendPTableUpdateToNATS(js, table)
+		if err != nil {
+			return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+		}
+		table.ClearPlayerActions()
+		table.ClearTableActions()
+		table.SetEliminatePlayersWithNoChips()
+
+		if len(table.Winners) > 0 {
+			log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
+		} else {
+			log.Printf("No se pudo determinar un ganador en EvaluateHand")
+		}
+
+		return table, nil
+	}
+	//SHOWDOWN
+	table.AssignPlayerCardsFromSecTable(&SecTable)
+	table.EvaluateHand()
+	table.AssignChipsToWinners()
+
+	table.CurrentStage = StageShowDown
+
+	err = poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
+
+	table.ClearPlayerActions()
+	table.ClearTableActions()
+	table.SetEliminatePlayersWithNoChips()
+
+	if len(table.Winners) > 0 {
+		log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
+	} else {
+		log.Printf("No se pudo determinar un ganador en EvaluateHand")
+	}
+
+	return table, nil
+}
+
+func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
+	table.SMBBTurn()
+	table.RemovePlayersEliminatedWithNoChips()
+	if len(table.Players) < 2 {
+		table.CurrentStage = StageFinishTable
+	}
+	js := GetJetStream()
+	err := poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		log.Fatalf("Failed to Send Data To Table: %v", err)
+	}
 	return table, nil
 }
 
@@ -447,7 +618,7 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 		players = append(players, player)
 	}
 
-	maxPlayersPerTable := 9 //todo change by tournament configuration
+	maxPlayersPerTable := 9
 	totalPlayers := len(players)
 	numTables := (totalPlayers + maxPlayersPerTable - 1) / maxPlayersPerTable
 	err := db.CreateTables(tournament.ID, numTables)
@@ -456,18 +627,19 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 	}
 
 	var tables []poker.Table
-
 	for i := 0; i < numTables; i++ {
 		table := poker.Table{
-			ID:             strconv.Itoa(i + 1),
-			IncrementBlind: tournament.IncrementBlind,
+			ID:                       strconv.Itoa(i + 1),
+			IncrementBlind:           tournament.IncrementBlind,
+			TotalPlayersInTournament: totalPlayers,
+			MaxPlayers:               maxPlayersPerTable,
+			MinPlayers:               2,
 		}
 		tables = append(tables, table)
 	}
 
 	for i, player := range players {
 		tableIndex := i % numTables
-		// mover a construct por table no por player
 		tables[tableIndex].Players = append(tables[tableIndex].Players, player)
 		tables[tableIndex].BBValue = tournament.BBValue
 		tables[tableIndex].TurnTime = tournament.TurnSeconds
@@ -485,10 +657,10 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 	tournament.Players = players
 	tournament.Tables = tables
 
-	if len(tournamentRegistrations) < 2 {
-		walletAddres := tables[0].Players[0].ID //control error
+	if len(tournamentRegistrations) == 1 {
+		walletAddres := tables[0].Players[0].ID
 		tournamentID := tables[0].TournamentID
-		walletId, _ := db.GetWalletIDByPlayerID(walletAddres) //todo: solo un get en el armado de table.Players agregando el campo a la struct
+		walletId, _ := db.GetWalletIDByPlayerID(walletAddres)
 		position, _ := db.InsertRanking(tournamentID, walletId)
 		err := poker.HandlePlayerPrize(uint(tournamentID), position.Position, walletAddres)
 		if err != nil {
@@ -574,4 +746,44 @@ func updateTableFromUpdatedTable(originalTable poker.Table, updatedTable poker.T
 	originalTable.LastIncrementBlind = updatedTable.LastIncrementBlind
 
 	return originalTable
+}
+
+func DeleteWorkflowExecutionActivity(ctx context.Context, workflowID string, cfg *config.Config) error {
+	conn, err := grpc.NewClient(cfg.Temporal.HostPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	temporalClient := workflowservice.NewWorkflowServiceClient(conn)
+
+	describeReq := &workflowservice.DescribeWorkflowExecutionRequest{
+		Namespace: "default",
+		Execution: &common.WorkflowExecution{
+			WorkflowId: workflowID,
+		},
+	}
+
+	_, err = temporalClient.DescribeWorkflowExecution(ctx, describeReq)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			log.Printf("Workflow %s not found, skipping deletion", workflowID)
+			return nil
+		}
+		return err
+	}
+
+	deleteReq := &workflowservice.DeleteWorkflowExecutionRequest{
+		Namespace: "default",
+		WorkflowExecution: &common.WorkflowExecution{
+			WorkflowId: workflowID,
+		},
+	}
+
+	_, err = temporalClient.DeleteWorkflowExecution(ctx, deleteReq)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

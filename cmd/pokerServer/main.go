@@ -4,12 +4,14 @@ import (
 	"context"
 	"log"
 	"server/config"
+	"server/internal/codec"
 	"server/internal/db"
 	"server/internal/nats"
 	"server/internal/poker"
 	internal "server/internal/server"
 	"server/internal/server/routes"
 	temporal "server/internal/workflow"
+	"time"
 
 	"go.temporal.io/sdk/client"
 	"gorm.io/gorm"
@@ -23,6 +25,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	dataConverter := codec.NewGzipDataConverter(10240)
 	db.InitDB(&cfg.Database)
 	err = db.Migrate()
 	if err != nil {
@@ -41,7 +44,12 @@ func main() {
 	}
 
 	temporalOptions := client.Options{
-		HostPort: cfg.Temporal.HostPort,
+		HostPort:      cfg.Temporal.HostPort,
+		DataConverter: dataConverter,
+		ConnectionOptions: client.ConnectionOptions{
+			MaxPayloadSize: 64 * 1024 * 1024,
+			KeepAliveTime:  30000 * time.Second,
+		},
 	}
 
 	c, err := client.Dial(temporalOptions)
@@ -50,7 +58,7 @@ func main() {
 	}
 	defer c.Close()
 
-	temporal.StartWorker(cfg)
+	temporal.StartWorker(cfg, dataConverter)
 
 	server := internal.NewServer(&cfg.Server)
 

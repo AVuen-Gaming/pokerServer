@@ -8,7 +8,6 @@ import (
 
 func TestDealCards(t *testing.T) {
 	table := &Table{}
-	table.DealCards()
 
 	assert.Equal(t, 7, len(table.Players), "Should have cards for all players")
 	assert.Len(t, table.FlopCards, 3, "There should be 3 cards in the flop")

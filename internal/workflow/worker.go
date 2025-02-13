@@ -6,9 +6,11 @@ import (
 	"server/config"
 	"server/internal/db"
 	"sync"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/worker"
 	"gorm.io/gorm"
 )
@@ -20,7 +22,7 @@ var (
 	once              sync.Once
 )
 
-func StartWorker(cfg *config.Config) {
+func StartWorker(cfg *config.Config, dataConverter converter.DataConverter) {
 	once.Do(func() {
 		address := fmt.Sprintf("nats://%s:%s@%s:%d", cfg.NATS.Username, cfg.NATS.Password, cfg.NATS.Host, cfg.NATS.Port)
 		natsConn, err := nats.Connect(address)
@@ -41,7 +43,11 @@ func StartWorker(cfg *config.Config) {
 		dbInstance = dbConn
 
 		temporalOptions := client.Options{
-			HostPort: cfg.Temporal.HostPort, //agregar configuraciones de seguridad
+			HostPort: cfg.Temporal.HostPort,
+			ConnectionOptions: client.ConnectionOptions{
+				MaxPayloadSize: 64 * 1024 * 1024,
+				KeepAliveTime:  30000 * time.Second,
+			},
 		}
 
 		c, err := client.Dial(temporalOptions)
@@ -52,14 +58,28 @@ func StartWorker(cfg *config.Config) {
 		defer c.Close()
 	})
 
-	c, err := client.Dial(client.Options{
+	temporalOptions := client.Options{
 		HostPort: cfg.Temporal.HostPort,
-	})
+		ConnectionOptions: client.ConnectionOptions{
+			MaxPayloadSize: 16 * 1024 * 1024,
+			KeepAliveTime:  30 * time.Second,
+		},
+	}
+
+	c, err := client.Dial(temporalOptions)
 	if err != nil {
 		log.Fatalf("Failed to create Temporal client: %v", err)
 	}
 
-	w := worker.New(c, "poker-task-queue", worker.Options{})
+	w := worker.New(c, "poker-task-queue", worker.Options{
+		MaxConcurrentActivityTaskPollers:   1000,
+		MaxConcurrentWorkflowTaskPollers:   1000,
+		MaxConcurrentActivityExecutionSize: 10000,
+
+		//MaxConcurrentWorkflowTaskExecutionSize: 100,
+		//WorkerActivitiesPerSecond: 100,
+		//TaskQueueActivitiesPerSecond: 100,
+	})
 	w.RegisterWorkflow(PlayerWorkflow)
 	w.RegisterWorkflow(TableWorkflow)
 	w.RegisterWorkflow(TournamentWorkflow)
@@ -77,6 +97,8 @@ func StartWorker(cfg *config.Config) {
 	w.RegisterActivity(CreateTablesInTournament)
 	w.RegisterActivity(HandleTurns)
 	w.RegisterActivity(CreatePrizePool)
+	w.RegisterActivity(DeleteWorkflowExecutionActivity)
+	w.RegisterActivity(HandleTableActivitie)
 
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {

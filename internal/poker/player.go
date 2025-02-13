@@ -33,6 +33,7 @@ type Player struct {
 	Winnings         int
 	CurrentTable     string
 	SwitchingTable   bool
+	Position         int
 }
 
 func SendPlayerUpdateToNATS(js nats.JetStreamContext, tableID string, player Player, tournamentId int) error {

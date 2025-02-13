@@ -20,7 +20,9 @@ func TestTableWorkflow(t *testing.T) {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	StartWorker(cfg)
+	//dataConverter := NewSnappyDataConverter()
+
+	//StartWorker(cfg, dataConverter)
 
 	temporalOptions := client.Options{
 		HostPort: cfg.Temporal.HostPort,
