@@ -35,23 +35,6 @@ const (
 	StageShowDownAllFoldExceptOne = "showDownAllFoldExceptOne"
 )
 
-func DealCardsActivity(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	//table.DealCards()
-
-	js := GetJetStream()
-	for _, player := range table.Players {
-		player.CurrentTable = table.ID
-		if err := poker.SendPlayerUpdateToNATS(js, table.ID, player, table.TournamentID); err != nil {
-			log.Printf("Error sending player update to NATS for player ID %s: %v", player.ID, err)
-			continue
-		}
-	}
-	time.Sleep(2 * time.Second)
-	table.CurrentStage = StagePreFlop
-
-	return table, nil
-}
-
 func HandleTableActivitie(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
 	SecTable := poker.Table{}
 	table.Round++
@@ -232,27 +215,6 @@ func DealPreFlop(ctx context.Context, table *poker.Table, config *config.Config)
 	if err != nil {
 		log.Fatalf("Failed to Send Data To Table: %v", err)
 	}
-	return table, nil
-}
-
-func DealFlop(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = StageFlop
-	time.Sleep(2 * time.Second)
-
-	return table, nil
-}
-
-func DealTurn(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = StageTurn
-	time.Sleep(2 * time.Second)
-
-	return table, nil
-}
-
-func DealRiver(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	table.CurrentStage = StageRiver
-	time.Sleep(2 * time.Second)
-
 	return table, nil
 }
 
@@ -463,34 +425,6 @@ func HandleTurns(ctx context.Context, table *poker.Table) (*poker.Table, error) 
 	return table, nil
 }
 
-func ShowDown(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	js := GetJetStream()
-	table.EvaluateHand()
-	table.AssignChipsToWinners()
-
-	table.CurrentStage = StageShowDown
-
-	err := poker.SendPTableUpdateToNATS(js, table)
-	if err != nil {
-		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
-	}
-
-	table.ClearPlayerActions()
-	table.ClearTableActions()
-	table.SetEliminatePlayersWithNoChips()
-
-	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
-
-	return table, nil
-}
-
-func Reshuffle(ctx context.Context, tables []poker.Table, updatedTable poker.Table, config *config.Config) ([]poker.Table, error) {
-	js := GetJetStream()
-	tables = poker.MovePlayers(tables, updatedTable, js)
-
-	return tables, nil
-}
-
 func CheckLastTable(ctx context.Context, tables []poker.Table, updatedTable poker.Table, config *config.Config) (bool, error) {
 	js := GetJetStream()
 	poker.OnlyOneTableRemains(tables)
@@ -569,24 +503,6 @@ func CreatePrizePool(ctx context.Context, tournament *poker.Tournament, config *
 
 	log.Printf("Se creó el premio para el torneo con ID %d, TotalPot: %.2f", tourId, prizePool)
 	return tournament, nil
-}
-
-func ShowDownAllFoldExecptOne(ctx context.Context, table *poker.Table, config *config.Config) (*poker.Table, error) {
-	js := GetJetStream()
-	table.CurrentStage = StageShowDownAllFoldExceptOne
-	table.UpdateTotalBetForFold()
-	table.AssignChipsToWinners()
-	err := poker.SendPTableUpdateToNATS(js, table)
-	if err != nil {
-		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
-	}
-	table.ClearPlayerActions()
-	table.ClearTableActions()
-	table.SetEliminatePlayersWithNoChips()
-
-	log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
-
-	return table, nil
 }
 
 func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament, config *config.Config) (*poker.Tournament, error) {

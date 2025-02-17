@@ -33,3 +33,6 @@ Struct
 │       └── utils.go
 └── go.mod
 └── go.sum
+
+to stop all in compose
+docker-compose down --volumes --remove-orphans

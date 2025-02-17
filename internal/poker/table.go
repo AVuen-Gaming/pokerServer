@@ -783,14 +783,6 @@ func (table *Table) SetEliminatePlayersWithNoChips() {
 	for i := range table.Players {
 		if table.Players[i].Chips <= 0 {
 			table.Players[i].IsEliminated = true
-			walletAddress := table.Players[i].ID // Se asume que este campo contiene la dirección del wallet.
-			tableID, err := strconv.Atoi(table.ID)
-			if err != nil {
-				continue
-			}
-			if err := db.DeleteTablePlayerByWalletAddress(tableID, table.TournamentID, walletAddress); err != nil {
-				continue
-			}
 		}
 	}
 }
@@ -888,10 +880,6 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 			}
 			player := currentTable.Players[0]
 			currentTable.Players = currentTable.Players[1:]
-			// Eliminar el registro del jugador de la current table.
-			if tableID, err := strconv.Atoi(currentTable.ID); err == nil {
-				_ = db.DeleteTablePlayerByTableAndTournament(tableID, currentTable.TournamentID)
-			}
 			playerMoved := false
 			originTableID := currentTable.ID
 			for j := range tables {
@@ -946,15 +934,19 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 			continue
 		}
 		if len(tables[i].Players) == 1 {
+			// Comprobamos que la mesa tenga al menos 1 jugador antes de proceder.
+			if len(tables[i].Players) == 0 {
+				continue
+			}
 			bestCandidateIndex := -1
 			bestCandidateCount := maxPlayers + 1
 			for j := range tables {
 				if tables[j].ID == tables[i].ID {
 					continue
 				}
-				if len(tables[j].Players) < maxPlayers {
+				if len(tables[j].Players) < tables[j].MaxPlayers {
 					count := len(tables[j].Players)
-					if count >= minPlayers && count < bestCandidateCount {
+					if count >= tables[j].MinPlayers && count < bestCandidateCount {
 						bestCandidateIndex = j
 						bestCandidateCount = count
 					}
@@ -966,25 +958,27 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 					if tables[j].ID == tables[i].ID {
 						continue
 					}
-					if len(tables[j].Players) < maxPlayers {
+					if len(tables[j].Players) < tables[j].MaxPlayers {
 						bestCandidateIndex = j
 						break
 					}
 				}
 			}
-			if bestCandidateIndex != -1 {
+			if bestCandidateIndex != -1 && len(tables[i].Players) > 0 {
 				player := tables[i].Players[0]
+				// Removemos el jugador de la mesa que tiene 1 jugador.
 				tables[i].Players = tables[i].Players[1:]
+				// Asignamos al jugador a la mesa candidata.
 				tables[bestCandidateIndex].Players = append(tables[bestCandidateIndex].Players, player)
 				player.SwitchingTable = true
 				oldTableID := tables[i].ID
 				player.CurrentTable = tables[bestCandidateIndex].ID
 				_ = SendPlayerUpdateToNATS(js, oldTableID, player, tables[bestCandidateIndex].TournamentID)
 			}
-			// Si la mesa sigue con 1 jugador, marcarla como Frozen.
+			// Si la mesa aún tiene 1 jugador, se marca como Frozen.
 			if len(tables[i].Players) == 1 {
 				tables[i].Frozen = true
-				SendPTableUpdateToNATS(js, &tables[i])
+				_ = SendPTableUpdateToNATS(js, &tables[i])
 			} else {
 				tables[i].Frozen = false
 			}
@@ -1051,6 +1045,8 @@ func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table, js nat
 				if err != nil {
 					log.Printf("Error manejando premios para el jugador %s en posición %d: %v", player.ID, position, err)
 				}
+				tableId, _ := strconv.Atoi(currentTable.ID)
+				db.DeleteTablePlayerByWalletAddress(tableId, originalTable.TournamentID, player.ID)
 				db.UpdateTournamentRegistrationEliminated(originalTable.TournamentID, walletId)
 				err = SendPlayerUpdateToNATS(js, originalTable.ID, player, originalTable.TournamentID)
 				if err != nil {
@@ -1064,7 +1060,6 @@ func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table, js nat
 }
 
 func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) error {
-
 	// Inicializar
 	table.LastToRaiserIndex = -1
 	bbIndex := -1
@@ -1100,8 +1095,10 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 
 	currentIndex := startingPlayerIndex
 	var raiseOccurred bool
+	// Usamos time.Now() aquí (podrías cambiarlo a workflow.Now(ctx) en un flujo de Temporal)
+	now := time.Now()
+	table.EndTime = int(now.Unix()) + table.TurnTime
 
-	// Bucle principal para procesar la ronda
 	for {
 		player := &table.Players[currentIndex]
 		if player.HasFold || player.HasAllIn || player.IsEliminated {
@@ -1113,15 +1110,15 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		}
 
 		table.CurrentTurn = player.ID
-		table.EndTime = int(time.Now().Unix()) + table.TurnTime
+		now = time.Now()
+		table.EndTime = int(now.Unix()) + table.TurnTime
 		table.SetTablePlayerActions(currentIndex)
 		if player.IsAFK {
-			table.EndTime = int(time.Now().Unix()) + table.TurnTime/3
+			table.EndTime = int(now.Unix()) + table.TurnTime/3
 		}
 
-		// Enviar actualización a JetStream
 		if err := SendPTableUpdateToNATS(js, table); err != nil {
-			return fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+			return fmt.Errorf("Error enviando actualización a JetStream: %v", err)
 		}
 
 		tournamentID := strconv.Itoa(table.TournamentID)
@@ -1129,15 +1126,21 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		consumerName := fmt.Sprintf("durable-consumer4-%s-%s", table.ID, player.ID)
 		msgChan := make(chan *nats.Msg, 64)
 
+		// Opción: Usar DeliverLast() para asegurarse de recibir el último mensaje y que se limpie la cola.
+		// También se elimina el consumidor previo para evitar errores.
 		if err := js.DeleteConsumer("POKER_TOURNAMENT", consumerName); err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
 			return fmt.Errorf("Error eliminando el consumidor %s: %v", consumerName, err)
 		}
 
-		sub, err := js.ChanSubscribe(subject, msgChan, nats.Durable(consumerName), nats.AckExplicit(), nats.DeliverAll())
+		sub, err := js.ChanSubscribe(subject, msgChan,
+			nats.Durable(consumerName),
+			nats.AckExplicit(),
+			nats.DeliverLast(),
+		)
 		if err != nil {
 			return fmt.Errorf("Error suscribiéndose a JetStream subject %s: %v", subject, err)
 		}
-		// Se asegura de desuscribirse tras usar la suscripción.
+		// Se desuscribe al finalizar el select.
 		defer func() {
 			if err := sub.Unsubscribe(); err != nil {
 				log.Printf("Error desuscribiendo del subject %s: %v", subject, err)
@@ -1226,7 +1229,6 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		table.UpdateTotalBet()
 		table.AllPlayersExceptOneFold()
 		currentIndex = (currentIndex + 1) % len(table.Players)
-
 		if table.AllFoldExceptOne {
 			break
 		}
@@ -1245,7 +1247,6 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		}
 	}
 
-	// Finalizamos la ronda: marcamos IsTurn = false para todos.
 	for i := range table.Players {
 		table.Players[i].IsTurn = false
 	}
@@ -1269,6 +1270,7 @@ func CheckLastTableInTables(tables []Table, js nats.JetStreamContext) (bool, err
 					return true, fmt.Errorf("error consiguiendo el tableID del ganador: %v", err)
 				}
 				db.DeleteTablePlayerByWalletID(tableID, tables[0].TournamentID, walletID)
+				db.DeleteTableByTableAndTournament(tableID, tables[0].TournamentID)
 				position, err := db.InsertRanking(tables[0].TournamentID, walletID)
 				if err != nil {
 					return true, fmt.Errorf("error InsertRanking: %v", err)

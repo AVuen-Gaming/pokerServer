@@ -56,14 +56,7 @@ func TestTableWorkflow(t *testing.T) {
 	w.RegisterWorkflow(TableWorkflow)
 	w.RegisterWorkflow(TournamentWorkflow)
 	w.RegisterActivity(DealPreFlop)
-	w.RegisterActivity(DealCardsActivity)
-	w.RegisterActivity(DealFlop)
-	w.RegisterActivity(Reshuffle)
-	w.RegisterActivity(DealTurn)
-	w.RegisterActivity(DealRiver)
 	w.RegisterActivity(HandleTurns)
-	w.RegisterActivity(ShowDown)
-	w.RegisterActivity(ShowDownAllFoldExecptOne)
 	w.RegisterActivity(CheckLastTable)
 
 	go func() {

@@ -1,8 +1,10 @@
 package nats
 
 import (
+	"errors"
 	"fmt"
 	"server/config"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
@@ -33,7 +35,11 @@ func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
 		Name:      "POKER_TOURNAMENT",
 		Subjects:  []string{"pokerServer.>", "pokerClient.>"},
 		Retention: nats.InterestPolicy,
+		MaxAge:    1 * time.Hour,
 	})
+	if err != nil && !errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
+		return nil, nil, fmt.Errorf("failed to add stream: %w", err)
+	}
 
 	return nc, js, nil
 }
