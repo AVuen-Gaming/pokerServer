@@ -1126,26 +1126,27 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		consumerName := fmt.Sprintf("durable-consumer4-%s-%s", table.ID, player.ID)
 		msgChan := make(chan *nats.Msg, 64)
 
-		// Opción: Usar DeliverLast() para asegurarse de recibir el último mensaje y que se limpie la cola.
-		// También se elimina el consumidor previo para evitar errores.
-		if err := js.DeleteConsumer("POKER_TOURNAMENT", consumerName); err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
-			return fmt.Errorf("Error eliminando el consumidor %s: %v", consumerName, err)
+		consumerInfo, err := js.ConsumerInfo("POKER_TOURNAMENT", consumerName)
+		if err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
+			log.Printf("Error verificando consumidor %s: %v", consumerName, err)
+		}
+
+		// Eliminar consumidor solo si existe
+		if consumerInfo != nil {
+			if err := js.DeleteConsumer("POKER_TOURNAMENT", consumerName); err != nil {
+				log.Printf("Error eliminando el consumidor %s: %v", consumerName, err)
+			}
 		}
 
 		sub, err := js.ChanSubscribe(subject, msgChan,
 			nats.Durable(consumerName),
 			nats.AckExplicit(),
-			nats.DeliverLast(),
+			nats.DeliverNew(),
+			//nats.DeliverLast(), en un futuro usar esto para las pre actions
 		)
 		if err != nil {
 			return fmt.Errorf("Error suscribiéndose a JetStream subject %s: %v", subject, err)
 		}
-		// Se desuscribe al finalizar el select.
-		defer func() {
-			if err := sub.Unsubscribe(); err != nil {
-				log.Printf("Error desuscribiendo del subject %s: %v", subject, err)
-			}
-		}()
 
 		select {
 		case msg := <-msgChan:
@@ -1226,6 +1227,9 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 			return ctx.Err()
 		}
 
+		if sub != nil {
+			sub.Unsubscribe() //todo ver si funciona
+		}
 		table.UpdateTotalBet()
 		table.AllPlayersExceptOneFold()
 		currentIndex = (currentIndex + 1) % len(table.Players)

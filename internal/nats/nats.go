@@ -34,7 +34,7 @@ func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "POKER_TOURNAMENT",
 		Subjects:  []string{"pokerServer.>", "pokerClient.>"},
-		Retention: nats.InterestPolicy,
+		Retention: nats.LimitsPolicy,
 		MaxAge:    1 * time.Hour,
 	})
 	if err != nil && !errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
@@ -46,8 +46,10 @@ func Connect(cfg *config.Config) (*nats.Conn, nats.JetStreamContext, error) {
 
 func ConfigureStream(js nats.JetStreamContext, streamCfg *config.StreamConfig) error {
 	_, err := js.AddStream(&nats.StreamConfig{
-		Name:     streamCfg.Name,
-		Subjects: streamCfg.Subjects,
+		Name:      streamCfg.Name,
+		Subjects:  streamCfg.Subjects,
+		Retention: nats.LimitsPolicy,
+		MaxAge:    1 * time.Hour,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add stream: %w", err)

@@ -21,6 +21,7 @@ services:
     image: nats:latest
     ports:
       - "4222:4222"
+      - "9222:9222"  # WebSocket 
     command: >
       -js
       --c /path/to/nats-server.conf

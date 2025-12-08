@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"encoding/json"
 	"server/config"
 	"server/internal/db"
 	"server/internal/poker"
@@ -200,7 +201,18 @@ func TournamentControllerWorkflow(ctx workflow.Context, tournament poker.Tournam
 		return tournament, err
 	}
 	db.SetTournamentEndDate(tournament.ID)
-
+	prizes, err := db.GetPrizeByTournamentID(tournament.ID)
+	if err != nil {
+		ctx.Done()
+		return tournament, err
+	}
+	var instructions []poker.TransferInstruction
+	err = json.Unmarshal([]byte(prizes.PrizeList), &instructions)
+	if err != nil {
+		ctx.Done()
+		return tournament, err
+	}
+	poker.ProcessTransfers(instructions, config.Server.SepoliaPrivateKey, config.Server.BNBPrivateKey, tournament.ID)
 	err = db.UpdateTournamentOngoing(tournament.ID, false)
 	if err != nil {
 		ctx.Done()

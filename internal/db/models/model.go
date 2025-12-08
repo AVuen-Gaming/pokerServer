@@ -38,6 +38,21 @@ type Tournament struct {
 	DeletedAt             time.Time `gorm:"index"`
 }
 
+type TransactionRecord struct {
+	ID            uint       `gorm:"primaryKey;autoIncrement"`
+	TournamentID  uint       `gorm:"not null"`
+	Tournament    Tournament `gorm:"foreignKey:TournamentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	WalletAddress string     `gorm:"size:100"`
+	TxHash        string     `gorm:"size:100"`
+	Currency      string     `gorm:"size:50;not null"`
+	Network       string     `gorm:"size:50;not null"`
+	Amount        string     `gorm:"not null"`
+	Success       bool       `gorm:"not null"`
+	CreatedAt     time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time  `gorm:"autoUpdateTime"`
+	DeletedAt     time.Time  `gorm:"index"`
+}
+
 type TournamentChip struct {
 	ID           uint       `gorm:"primaryKey;autoIncrement"`
 	TournamentID uint       `gorm:"not null"`

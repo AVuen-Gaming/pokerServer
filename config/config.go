@@ -34,16 +34,18 @@ type StreamConfig struct {
 }
 
 type ServerConfig struct {
-	Port          string `mapstructure:"port"`
-	Allowedorigin string `mapstructure:"allowedorigin"`
-	StaticToken   string `mapstructure:"statictoken"`
-	Sign          string `mapstructure:"sign"`
-	HttpOnly      bool   `mapstructure:"httponly"`
-	Secure        bool   `mapstructure:"secure"`
-	Wallet        string `mapstructure:"wallet"`
-	SepApiKey     string `mapstructure:"sepapikey"`
-	BcsApiKey     string `mapstructure:"bcsapikey"`
-	Router        *mux.Router
+	Port              string `mapstructure:"port"`
+	Allowedorigin     string `mapstructure:"allowedorigin"`
+	StaticToken       string `mapstructure:"statictoken"`
+	Sign              string `mapstructure:"sign"`
+	HttpOnly          bool   `mapstructure:"httponly"`
+	Secure            bool   `mapstructure:"secure"`
+	Wallet            string `mapstructure:"wallet"`
+	SepApiKey         string `mapstructure:"sepapikey"`
+	BcsApiKey         string `mapstructure:"bcsapikey"`
+	SepoliaPrivateKey string `mapstructure:"sepoliaprivatekey"`
+	BNBPrivateKey     string `mapstructure:"bnbprivatekey"`
+	Router            *mux.Router
 }
 
 type Config struct {
@@ -108,15 +110,17 @@ func LoadConfig() (*Config, error) {
 			},
 		},
 		Server: ServerConfig{
-			Port:          os.Getenv("SERVER_PORT"),
-			Allowedorigin: os.Getenv("SERVER_ALLOWED_ORIGIN"),
-			StaticToken:   os.Getenv("STATIC_TOKEN"),
-			Sign:          os.Getenv("Sign"),
-			HttpOnly:      httpOnly,
-			Secure:        secure,
-			Wallet:        os.Getenv("Wallet"),
-			SepApiKey:     os.Getenv("SepApiKey"),
-			BcsApiKey:     os.Getenv("BcsApiKey"),
+			Port:              os.Getenv("SERVER_PORT"),
+			Allowedorigin:     os.Getenv("SERVER_ALLOWED_ORIGIN"),
+			StaticToken:       os.Getenv("STATIC_TOKEN"),
+			Sign:              os.Getenv("Sign"),
+			HttpOnly:          httpOnly,
+			Secure:            secure,
+			Wallet:            os.Getenv("Wallet"),
+			SepApiKey:         os.Getenv("SepApiKey"),
+			BcsApiKey:         os.Getenv("BcsApiKey"),
+			SepoliaPrivateKey: os.Getenv("SepoliaPrivateKey"),
+			BNBPrivateKey:     os.Getenv("BNBPrivateKey"),
 		},
 		Temporal: TemporalConfig{
 			HostPort: os.Getenv("TEMPORAL_HOSTPORT"),

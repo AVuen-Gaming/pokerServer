@@ -90,6 +90,10 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	//FLOP
 	table.FlopCards = SecTable.FlopCards
 	table.CurrentStage = StageFlop
+	err = poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
 	time.Sleep(2 * time.Second)
 
 	//HANDLETURN
@@ -121,6 +125,10 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	//TURN
 	table.TurnCard = SecTable.TurnCard
 	table.CurrentStage = StageTurn
+	err = poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
 	time.Sleep(2 * time.Second)
 
 	//HANDLETURN
@@ -152,6 +160,10 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	//RIVER
 	table.RiverCard = SecTable.RiverCard
 	table.CurrentStage = StageRiver
+	err = poker.SendPTableUpdateToNATS(js, table)
+	if err != nil {
+		return nil, fmt.Errorf("Error enviando actualización a JetStream para el jugador: %v", err)
+	}
 	time.Sleep(2 * time.Second)
 
 	//HANDLETURN
@@ -195,6 +207,7 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	table.ClearTableActions()
 	table.SetEliminatePlayersWithNoChips()
 
+	time.Sleep(2 * time.Second)
 	if len(table.Winners) > 0 {
 		log.Printf("El jugador %s ha ganado la mano con %s", table.Winners[0].ID, table.Winners[0].HandDescription)
 	} else {
