@@ -41,12 +41,31 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	table.CurrentStage = StageInitRound
 	table.SMBBTurn()
 	table.RemovePlayersEliminatedWithNoChips()
-	if len(table.Players) < 2 {
-		table.CurrentStage = StageFinishTable
-	}
 	js := GetJetStream()
+	if len(table.Players) < 2 {
+		table.TableEnd()
+		table.CurrentStage = StageFinishTable
+		if len(table.Players) == 1 {
+			table.Winners = []poker.Player{table.Players[0]}
+		}
+		if err := poker.SendPTableUpdateToNATS(js, table); err != nil {
+			return nil, fmt.Errorf("Failed to publish finishTable update: %w", err)
+		}
+		return table, nil
+	}
+	if conn := GetNATSConnection(); conn != nil {
+		status := conn.Status()
+		if status != nats.CONNECTED {
+			log.Printf("[NATS] connection status before table publish: %s (lastErr=%v)", status, conn.LastError())
+		} else if last := conn.LastError(); last != nil {
+			log.Printf("[NATS] previous connection error before publish: %v", last)
+		}
+	}
 	err := poker.SendPTableUpdateToNATS(js, table)
 	if err != nil {
+		if conn := GetNATSConnection(); conn != nil {
+			log.Printf("[NATS] publish failed with status=%s lastErr=%v", conn.Status(), conn.LastError())
+		}
 		log.Fatalf("Failed to Send Data To Table: %v", err)
 	}
 
@@ -170,7 +189,6 @@ func HandleTableActivitie(ctx context.Context, table *poker.Table, config *confi
 	table.HandleTurn(ctx, js)
 	time.Sleep(2 * time.Second)
 
-	//CHECKSHOWDOWN
 	if table.AllFoldExceptOne {
 		table.CurrentStage = StageShowDownAllFoldExceptOne
 		table.UpdateTotalBetForFold()
@@ -453,9 +471,10 @@ func CheckLastTable(ctx context.Context, tables []poker.Table, updatedTable poke
 				if err != nil {
 					return true, fmt.Errorf("error InsertRanking: %v", err)
 				}
+				log.Printf("Se registró al wallet %d en la posición %d", walletID, position.Position)
 				err = poker.HandlePlayerPrize(uint(tables[0].TournamentID), position.Position, player.ID)
 				if err != nil {
-					return true, fmt.Errorf("error HandlePlayerPrize: %v", err)
+					return true, fmt.Errorf("error HandlePlayerPrize en posición %d: %v", position.Position, err)
 				}
 
 			}
@@ -550,15 +569,26 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 	maxPlayersPerTable := 9
 	totalPlayers := len(players)
 	numTables := (totalPlayers + maxPlayersPerTable - 1) / maxPlayersPerTable
-	err := db.CreateTables(tournament.ID, numTables)
+	if err := db.CreateTables(tournament.ID, numTables); err != nil {
+		return tournament, err
+	}
+	dbTables, err := db.GetTablesByTournamentID(tournament.ID)
 	if err != nil {
 		return tournament, err
 	}
+	tableByNumber := make(map[int]models.Table, len(dbTables))
+	for _, tbl := range dbTables {
+		tableByNumber[tbl.TableNumber] = tbl
+	}
 
 	var tables []poker.Table
-	for i := 0; i < numTables; i++ {
+	for i := 1; i <= numTables; i++ {
+		tblModel, ok := tableByNumber[i]
+		if !ok {
+			return tournament, fmt.Errorf("no table model for table number %d", i)
+		}
 		table := poker.Table{
-			ID:                       strconv.Itoa(i + 1),
+			ID:                       strconv.Itoa(int(tblModel.ID)),
 			IncrementBlind:           tournament.IncrementBlind,
 			TotalPlayersInTournament: totalPlayers,
 			MaxPlayers:               maxPlayersPerTable,
@@ -577,8 +607,12 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 		if err != nil {
 			return tournament, errors.New("failed to retrieve wallet ID for player: " + player.ID)
 		}
-		err = db.InsertTablePlayer(uint(tableIndex+1), walletID, tournament.ID)
-		if err != nil {
+		tableModelNumber := tableIndex + 1
+		tableModel, ok := tableByNumber[tableModelNumber]
+		if !ok {
+			return tournament, fmt.Errorf("table model missing for assignment %d", tableModelNumber)
+		}
+		if err := db.InsertTablePlayer(tableModel.ID, walletID, tournament.ID); err != nil {
 			return tournament, errors.New("failed to insert into TablePlayer for player: " + player.ID)
 		}
 	}
@@ -593,7 +627,7 @@ func CreateTablesInTournament(ctx context.Context, tournament *poker.Tournament,
 		position, _ := db.InsertRanking(tournamentID, walletId)
 		err := poker.HandlePlayerPrize(uint(tournamentID), position.Position, walletAddres)
 		if err != nil {
-			log.Printf("Error manejando premios para el jugador %s en posición %d: %v", walletAddres, position, err)
+			log.Printf("Error manejando premios para el jugador %s en posición %d: %v", walletAddres, position.Position, err)
 		}
 		return tournament, errors.New("no se cumplen el minimo de players para el torneo")
 	}
@@ -640,41 +674,152 @@ func tableExists(tables []poker.Table, tableID string) bool {
 }
 
 func updateTableFromUpdatedTable(originalTable poker.Table, updatedTable poker.Table) poker.Table {
-	playerMap := make(map[string]*poker.Player)
-	for i := range originalTable.Players {
-		for j := range updatedTable.Players {
-			if updatedTable.Players[j].ID == originalTable.Players[j].ID {
-				originalTable.Players[j].Chips = updatedTable.Players[j].Chips
-				break
-			}
-		}
-		playerMap[originalTable.Players[i].ID] = &originalTable.Players[i]
+	updatedByID := make(map[string]poker.Player, len(updatedTable.Players))
+	for _, p := range updatedTable.Players {
+		updatedByID[p.ID] = p
 	}
 
-	for _, updatedPlayer := range updatedTable.Players {
-		if player, exists := playerMap[updatedPlayer.ID]; exists {
-			player.Chips = updatedPlayer.Chips
-			// posiblemente se necesite agregar otros campos
-		} else {
-			originalTable.Players = append(originalTable.Players, updatedPlayer)
+	mergedPlayers := make([]poker.Player, 0, len(updatedTable.Players))
+	for _, existing := range originalTable.Players {
+		if updatedPlayer, ok := updatedByID[existing.ID]; ok {
+			mergedPlayers = append(mergedPlayers, clonePlayer(updatedPlayer))
+			delete(updatedByID, existing.ID)
 		}
+	}
+	for _, remaining := range updatedByID {
+		mergedPlayers = append(mergedPlayers, clonePlayer(remaining))
 	}
 
-	for i := len(originalTable.Players) - 1; i >= 0; i-- {
-		if _, exists := playerMap[originalTable.Players[i].ID]; !exists {
-			originalTable.Players = append(originalTable.Players[:i], originalTable.Players[i+1:]...)
-		}
-	}
-	//CONSTRUCTOR
-	//mover a constructor
-	//ver posibles campos extras necesarios
-	originalTable.Round = updatedTable.Round
+	originalTable.Players = mergedPlayers
+	originalTable.Winners = clonePlayers(updatedTable.Winners)
+	originalTable.TotalBetIndividual = cloneBetMap(updatedTable.TotalBetIndividual)
+	originalTable.FlopCards = cloneCards(updatedTable.FlopCards)
+	originalTable.TurnCard = cloneCardPointer(updatedTable.TurnCard)
+	originalTable.RiverCard = cloneCardPointer(updatedTable.RiverCard)
+	originalTable.SidePots = cloneSidePots(updatedTable.SidePots)
+
 	originalTable.CurrentBB = updatedTable.CurrentBB
 	originalTable.CurrentSB = updatedTable.CurrentSB
+	originalTable.CurrentTurn = updatedTable.CurrentTurn
+	originalTable.NextTurn = updatedTable.NextTurn
+	originalTable.LastAction = updatedTable.LastAction
+	originalTable.Total = updatedTable.Total
+	originalTable.TotalBet = updatedTable.TotalBet
+	originalTable.CurrentStage = updatedTable.CurrentStage
+	originalTable.TurnTime = updatedTable.TurnTime
+	originalTable.EndTime = updatedTable.EndTime
+	originalTable.Timestamp = updatedTable.Timestamp
+	originalTable.BiggestBet = updatedTable.BiggestBet
+	originalTable.IsPreFlop = updatedTable.IsPreFlop
+	originalTable.Round = updatedTable.Round
+	originalTable.RoundFinish = updatedTable.RoundFinish
+	originalTable.PreviousStage = updatedTable.PreviousStage
 	originalTable.BBValue = updatedTable.BBValue
+	originalTable.AllFoldExceptOne = updatedTable.AllFoldExceptOne
+	originalTable.PlayerActedInRound = updatedTable.PlayerActedInRound
+	originalTable.LastToRaiserIndex = updatedTable.LastToRaiserIndex
+	originalTable.Stopped = updatedTable.Stopped
+	originalTable.Frozen = updatedTable.Frozen
+	originalTable.TableEnds = updatedTable.TableEnds
+	originalTable.MinPlayers = updatedTable.MinPlayers
+	originalTable.MaxPlayers = updatedTable.MaxPlayers
+	originalTable.AvgPlayers = updatedTable.AvgPlayers
+	originalTable.LastTable = updatedTable.LastTable
+	originalTable.EndTableTime = updatedTable.EndTableTime
+	originalTable.TournamentID = updatedTable.TournamentID
+	originalTable.IncrementBlind = updatedTable.IncrementBlind
 	originalTable.LastIncrementBlind = updatedTable.LastIncrementBlind
+	originalTable.TotalPlayersInTournament = updatedTable.TotalPlayersInTournament
 
 	return originalTable
+}
+
+func clonePlayer(player poker.Player) poker.Player {
+	copyPlayer := player
+	copyPlayer.Cards = cloneCards(player.Cards)
+	copyPlayer.AvailableActions = cloneStringSlice(player.AvailableActions)
+	copyPlayer.PreAction = cloneStringSlice(player.PreAction)
+	copyPlayer.BestHand = cloneCards(player.BestHand)
+	return copyPlayer
+}
+
+func clonePlayers(players []poker.Player) []poker.Player {
+	if len(players) == 0 {
+		return nil
+	}
+	cloned := make([]poker.Player, len(players))
+	for i, player := range players {
+		cloned[i] = clonePlayer(player)
+	}
+	return cloned
+}
+
+func cloneCards(cards []poker.Card) []poker.Card {
+	if len(cards) == 0 {
+		return nil
+	}
+	cloned := make([]poker.Card, len(cards))
+	copy(cloned, cards)
+	return cloned
+}
+
+func cloneCardPointer(card *poker.Card) *poker.Card {
+	if card == nil {
+		return nil
+	}
+	copyCard := *card
+	return &copyCard
+}
+
+func cloneStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
+}
+
+func cloneBetMap(values map[string]int) map[string]int {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]int, len(values))
+	for k, v := range values {
+		cloned[k] = v
+	}
+	return cloned
+}
+
+func cloneSidePots(pots []poker.SidePot) []poker.SidePot {
+	if len(pots) == 0 {
+		return nil
+	}
+	cloned := make([]poker.SidePot, len(pots))
+	for i, pot := range pots {
+		cloned[i] = poker.SidePot{Amount: pot.Amount}
+		if len(pot.Players) > 0 {
+			cloned[i].Players = make([]*poker.Player, len(pot.Players))
+			for j, player := range pot.Players {
+				if player == nil {
+					continue
+				}
+				copyPlayer := clonePlayer(*player)
+				cloned[i].Players[j] = &copyPlayer
+			}
+		}
+		if len(pot.Winner) > 0 {
+			cloned[i].Winner = make([]*poker.Player, len(pot.Winner))
+			for j, player := range pot.Winner {
+				if player == nil {
+					continue
+				}
+				copyPlayer := clonePlayer(*player)
+				cloned[i].Winner[j] = &copyPlayer
+			}
+		}
+	}
+	return cloned
 }
 
 func DeleteWorkflowExecutionActivity(ctx context.Context, workflowID string, cfg *config.Config) error {

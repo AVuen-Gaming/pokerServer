@@ -16,22 +16,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-type Card struct {
-	Suit  string `json:"suit"`
-	Value string `json:"value"`
-}
-
-type PlayerCards struct {
-	PlayerID string
-	Cards    []Card
-}
-
-type SidePot struct {
-	Amount  int
-	Players []*Player
-	Winner  []*Player
-}
-
 type Table struct {
 	ID                       string
 	CurrentBB                string
@@ -73,6 +57,17 @@ type Table struct {
 	IncrementBlind           int
 	LastIncrementBlind       time.Time
 	TotalPlayersInTournament int
+}
+
+type Card struct {
+	Suit  string `json:"suit"`
+	Value string `json:"value"`
+}
+
+type SidePot struct {
+	Amount  int       `json:"amount"`
+	Players []*Player `json:"players"`
+	Winner  []*Player `json:"winner"`
 }
 
 const (
@@ -121,13 +116,15 @@ func (table *Table) DealCards(js nats.JetStreamContext) {
 
 	// Deal 2 cards to each player
 	for i := range table.Players {
-		player := table.Players[i]
+		player := &table.Players[i]
 		if len(deck) >= 2 {
 			player.Cards = []Card{deck[0], deck[1]}
 			deck = deck[2:]
 			player.CurrentTable = table.ID
-			if err := SendPlayerUpdateToNATS(js, table.ID, player, table.TournamentID); err != nil {
-				continue
+			if js != nil {
+				if err := SendPlayerUpdateToNATS(js, table.ID, *player, table.TournamentID); err != nil {
+					continue
+				}
 			}
 		} else {
 			player.Cards = []Card{}
@@ -175,9 +172,12 @@ func SendPTableUpdateToNATS(js nats.JetStreamContext, table *Table) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal player data for player %s: %w", table.ID, err)
 	}
+	if len(messageBytes) > 512*1024 {
+		log.Printf("[NATS] large table payload %d bytes for table %s", len(messageBytes), table.ID)
+	}
 
 	if _, err := js.Publish(subject, messageBytes); err != nil {
-		return fmt.Errorf("failed to publish message to JetStream for player %s: %w", table.ID, err)
+		return fmt.Errorf("failed to publish message to JetStream for subject %s (table %s): %w", subject, table.ID, err)
 	}
 
 	return nil
@@ -369,6 +369,24 @@ func (table *Table) CountActivePlayers() int {
 		}
 	}
 	return count
+}
+
+func (table *Table) nextEligibleTurnIndex(startIndex int, includeStart bool) int {
+	if len(table.Players) == 0 {
+		return -1
+	}
+	for offset := 0; offset < len(table.Players); offset++ {
+		idx := (startIndex + offset) % len(table.Players)
+		if offset == 0 && !includeStart {
+			continue
+		}
+		player := table.Players[idx]
+		if player.HasFold || player.HasAllIn || player.IsEliminated {
+			continue
+		}
+		return idx
+	}
+	return -1
 }
 
 func (table *Table) AllPlayersHaveCalled() bool {
@@ -857,76 +875,27 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 	const minPlayers = 2
 	const maxPlayers = 9
 
-	// Marcar mesas con menos de su mínimo como detenidas.
-	for i := range tables {
-		if len(tables[i].Players) < tables[i].MinPlayers {
-			tables[i].Stopped = true
+	plannedTables, transfers, tableRemoved := planReshuffleTables(tables, currentTable)
+	for _, transfer := range transfers {
+		player := transfer.Player
+		player.SwitchingTable = true
+		_ = SendPlayerUpdateToNATS(js, transfer.FromTable, player, transfer.TournamentID)
+		if walletId, err := db.GetWalletIDByPlayerID(player.ID); err == nil {
+			if newTableID, err := strconv.Atoi(transfer.ToTable); err == nil {
+				db.UpdateTablePlayerTableID(walletId, transfer.TournamentID, newTableID)
+			}
 		}
 	}
 
-	// Calcular el promedio de jugadores.
-	totalPlayers := 0
-	for _, t := range tables {
-		totalPlayers += len(t.Players)
+	if tableRemoved {
+		if tableID, err := strconv.Atoi(currentTable.ID); err == nil {
+			_ = db.DeleteTablePlayerByTableAndTournament(tableID, currentTable.TournamentID)
+			_ = db.DeleteTableByTableAndTournament(tableID, currentTable.TournamentID)
+		}
+		SendPTableUpdateToNATS(js, &currentTable)
 	}
-	avgPlayers := totalPlayers / len(tables)
 
-	// Solo mover jugadores de la current table si ésta tiene menos que el promedio o su mínimo.
-	if len(currentTable.Players) < avgPlayers || len(currentTable.Players) < currentTable.MinPlayers {
-		for len(currentTable.Players) > 0 {
-			// Evitar mover si eso dejaría a currentTable con menos de minPlayers.
-			if len(currentTable.Players) <= minPlayers {
-				break
-			}
-			player := currentTable.Players[0]
-			currentTable.Players = currentTable.Players[1:]
-			playerMoved := false
-			originTableID := currentTable.ID
-			for j := range tables {
-				if currentTable.ID != tables[j].ID && len(tables[j].Players) < maxPlayers {
-					// Solo mover si currentTable tendrá al menos minPlayers después de mover.
-					if len(currentTable.Players) < minPlayers {
-						break
-					}
-					tables[j].Players = append(tables[j].Players, player)
-					player.SwitchingTable = true
-					_ = SendPlayerUpdateToNATS(js, originTableID, player, tables[j].TournamentID)
-					player.CurrentTable = tables[j].ID
-					if walletId, err := db.GetWalletIDByPlayerID(player.ID); err == nil {
-						if newTableID, err := strconv.Atoi(tables[j].ID); err == nil {
-							db.UpdateTablePlayerTableID(walletId, tables[j].TournamentID, newTableID)
-						}
-					}
-					playerMoved = true
-					break
-				}
-			}
-			if !playerMoved {
-				// Si no se pudo mover el jugador, se reinserta y se sale del bucle.
-				currentTable.Players = append([]Player{player}, currentTable.Players...)
-				break
-			}
-		}
-		// Si la current table queda vacía, marcarla como terminada y eliminarla.
-		if len(currentTable.Players) == 0 {
-			currentTable.TableEnds = true
-			currentTable.CurrentStage = "deleteTable"
-			if tableID, err := strconv.Atoi(currentTable.ID); err == nil {
-				_ = db.DeleteTablePlayerByTableAndTournament(tableID, currentTable.TournamentID)
-				_ = db.DeleteTableByTableAndTournament(tableID, currentTable.TournamentID)
-			}
-			SendPTableUpdateToNATS(js, &currentTable)
-			tables = removeTable(tables, currentTable.ID)
-		} else {
-			// Actualizar la current table en el arreglo.
-			for i := range tables {
-				if tables[i].ID == currentTable.ID {
-					tables[i] = currentTable
-					break
-				}
-			}
-		}
-	}
+	tables = plannedTables
 
 	// Procesar mesas (que no sean la current) con exactamente 1 jugador:
 	for i := range tables {
@@ -988,6 +957,127 @@ func MovePlayers(tables []Table, currentTable Table, js nats.JetStreamContext) [
 	return tables
 }
 
+type playerTransfer struct {
+	Player       Player
+	FromTable    string
+	ToTable      string
+	TournamentID int
+}
+
+func planReshuffleTables(tables []Table, currentTable Table) ([]Table, []playerTransfer, bool) {
+	if len(tables) == 0 {
+		return tables, nil, false
+	}
+	updatedTables := cloneTables(tables)
+	currIdx := -1
+	for i := range updatedTables {
+		if updatedTables[i].ID == currentTable.ID {
+			currIdx = i
+			break
+		}
+	}
+	if currIdx == -1 {
+		return updatedTables, nil, false
+	}
+	updatedTables[currIdx] = currentTable
+	transfers := []playerTransfer{}
+
+	for i := range updatedTables {
+		minPlayers := updatedTables[i].MinPlayers
+		if minPlayers == 0 {
+			minPlayers = 2
+		}
+		if len(updatedTables[i].Players) < minPlayers {
+			updatedTables[i].Stopped = true
+		}
+	}
+
+	totalPlayers := 0
+	for _, t := range updatedTables {
+		totalPlayers += len(t.Players)
+	}
+	avgPlayers := 0
+	if len(updatedTables) > 0 {
+		avgPlayers = totalPlayers / len(updatedTables)
+	}
+
+	minPlayersCurrent := currentTable.MinPlayers
+	if minPlayersCurrent == 0 {
+		minPlayersCurrent = 2
+	}
+	maxPlayersDefault := currentTable.MaxPlayers
+	if maxPlayersDefault == 0 {
+		maxPlayersDefault = 9
+	}
+
+	currTable := &updatedTables[currIdx]
+	if len(currTable.Players) < avgPlayers || len(currTable.Players) < minPlayersCurrent {
+		for len(currTable.Players) > 0 {
+			if len(currTable.Players) <= minPlayersCurrent {
+				break
+			}
+			player := currTable.Players[0]
+			currTable.Players = currTable.Players[1:]
+			moved := false
+			for j := range updatedTables {
+				if updatedTables[j].ID == currTable.ID {
+					continue
+				}
+				tableMax := updatedTables[j].MaxPlayers
+				if tableMax == 0 {
+					tableMax = maxPlayersDefault
+				}
+				if len(updatedTables[j].Players) < tableMax {
+					if len(currTable.Players) < minPlayersCurrent {
+						currTable.Players = append([]Player{player}, currTable.Players...)
+						break
+					}
+					player.SwitchingTable = true
+					player.CurrentTable = updatedTables[j].ID
+					updatedTables[j].Players = append(updatedTables[j].Players, player)
+					transfers = append(transfers, playerTransfer{
+						Player:       player,
+						FromTable:    currTable.ID,
+						ToTable:      updatedTables[j].ID,
+						TournamentID: updatedTables[j].TournamentID,
+					})
+					moved = true
+					break
+				}
+			}
+			if !moved {
+				currTable.Players = append([]Player{player}, currTable.Players...)
+				break
+			}
+		}
+		if len(currTable.Players) == 0 {
+			currTable.TableEnds = true
+			currTable.CurrentStage = "deleteTable"
+			updatedTables = removeTable(updatedTables, currTable.ID)
+			return updatedTables, transfers, true
+		}
+		updatedTables[currIdx] = *currTable
+	}
+
+	return updatedTables, transfers, false
+}
+
+func cloneTables(tables []Table) []Table {
+	if len(tables) == 0 {
+		return nil
+	}
+	cloned := make([]Table, len(tables))
+	for i, tbl := range tables {
+		cloned[i] = tbl
+		if len(tbl.Players) > 0 {
+			playersCopy := make([]Player, len(tbl.Players))
+			copy(playersCopy, tbl.Players)
+			cloned[i].Players = playersCopy
+		}
+	}
+	return cloned
+}
+
 func GetTableByID(tables []Table, targetTableID string) (*Table, bool) {
 	for i := range tables {
 		if tables[i].ID == targetTableID {
@@ -1026,32 +1116,35 @@ func (table *Table) TableEnd() {
 
 func CompareAndRemoveEliminatedPlayers(currentTable, originalTable Table, js nats.JetStreamContext) Table {
 	currentTable.SetEliminatePlayersWithNoChips()
-	originalPlayerMap := make(map[string]Player)
+	updatedPlayerMap := make(map[string]Player, len(currentTable.Players))
 	for _, player := range currentTable.Players {
-		originalPlayerMap[player.ID] = player
+		updatedPlayerMap[player.ID] = player
 	}
 
 	var updatedPlayers []Player
-	for _, player := range originalTable.Players {
-		if originalPlayer, exists := originalPlayerMap[player.ID]; exists {
-			if !originalPlayer.IsEliminated {
-				updatedPlayers = append(updatedPlayers, player)
-			}
-			if originalPlayer.IsEliminated {
-				walletId, _ := db.GetWalletIDByPlayerID(player.ID)
-				position, _ := db.InsertRanking(originalTable.TournamentID, walletId)
-				player.Position = position.Position
-				err := HandlePlayerPrize(uint(originalTable.TournamentID), position.Position, player.ID)
-				if err != nil {
-					log.Printf("Error manejando premios para el jugador %s en posición %d: %v", player.ID, position, err)
-				}
-				tableId, _ := strconv.Atoi(currentTable.ID)
-				db.DeleteTablePlayerByWalletAddress(tableId, originalTable.TournamentID, player.ID)
-				db.UpdateTournamentRegistrationEliminated(originalTable.TournamentID, walletId)
-				err = SendPlayerUpdateToNATS(js, originalTable.ID, player, originalTable.TournamentID)
-				if err != nil {
-					log.Printf("Error enviando actualización a NATS para el jugador %s: %v", player.ID, err)
-				}
+	for _, previousPlayer := range originalTable.Players {
+		updatedPlayer, exists := updatedPlayerMap[previousPlayer.ID]
+		if !exists {
+			continue
+		}
+
+		if !updatedPlayer.IsEliminated {
+			updatedPlayers = append(updatedPlayers, updatedPlayer)
+			continue
+		}
+
+		walletId, _ := db.GetWalletIDByPlayerID(updatedPlayer.ID)
+		position, _ := db.InsertRanking(originalTable.TournamentID, walletId)
+		updatedPlayer.Position = position.Position
+		if err := HandlePlayerPrize(uint(originalTable.TournamentID), position.Position, updatedPlayer.ID); err != nil {
+			log.Printf("Error manejando premios para el jugador %s en posición %d: %v", updatedPlayer.ID, position.Position, err)
+		}
+		tableId, _ := strconv.Atoi(currentTable.ID)
+		db.DeleteTablePlayerByWalletAddress(tableId, originalTable.TournamentID, updatedPlayer.ID)
+		db.UpdateTournamentRegistrationEliminated(originalTable.TournamentID, walletId)
+		if js != nil {
+			if err := SendPlayerUpdateToNATS(js, originalTable.ID, updatedPlayer, originalTable.TournamentID); err != nil {
+				log.Printf("Error enviando actualización a NATS para el jugador %s: %v", updatedPlayer.ID, err)
 			}
 		}
 	}
@@ -1076,17 +1169,19 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 	var startingPlayerIndex int = -1
 	if table.CurrentStage == StagePreFlop {
 		table.SetSMBB()
-		startingPlayerIndex = (bbIndex + 1) % len(table.Players)
+		nextIndex := (bbIndex + 1) % len(table.Players)
+		startingPlayerIndex = table.nextEligibleTurnIndex(nextIndex, true)
 	} else {
-		for i := 1; i < len(table.Players); i++ {
-			currentIndex := (bbIndex + i) % len(table.Players)
-			if !table.Players[currentIndex].HasFold && !table.Players[currentIndex].HasAllIn && !table.Players[currentIndex].IsEliminated {
-				startingPlayerIndex = currentIndex
-				break
-			}
+		sbIndex := table.FindPlayerByID(table.CurrentSB)
+		if sbIndex == -1 {
+			sbIndex = (bbIndex + 1) % len(table.Players)
 		}
+		startingPlayerIndex = table.nextEligibleTurnIndex(sbIndex, true)
 	}
-	if table.AllPlayersAllInExceptOneAndFolded() || table.AllPlayersAllInExceptFolded() {
+	if startingPlayerIndex == -1 {
+		return fmt.Errorf("no eligible player to start turn in stage %s", table.CurrentStage)
+	}
+	if table.AllPlayersAllInExceptFolded() || (table.AllPlayersAllInExceptOneAndFolded() && table.AllPlayersHaveCalled()) {
 		return nil
 	}
 	if startingPlayerIndex == -1 {
@@ -1094,7 +1189,7 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 	}
 
 	currentIndex := startingPlayerIndex
-	var raiseOccurred bool
+	actionsTaken := 0
 	// Usamos time.Now() aquí (podrías cambiarlo a workflow.Now(ctx) en un flujo de Temporal)
 	now := time.Now()
 	table.EndTime = int(now.Unix()) + table.TurnTime
@@ -1102,23 +1197,17 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 	for {
 		player := &table.Players[currentIndex]
 		if player.HasFold || player.HasAllIn || player.IsEliminated {
-			currentIndex = (currentIndex + 1) % len(table.Players)
-			if currentIndex == startingPlayerIndex && !raiseOccurred && table.PlayerActedInRound >= table.CountActivePlayers() {
+			nextIndex := (currentIndex + 1) % len(table.Players)
+			if table.AllFoldExceptOne || table.AllPlayersAllInExceptFolded() ||
+				(table.AllPlayersAllInExceptOneAndFolded() && table.AllPlayersHaveCalled()) {
 				break
 			}
+			if table.AllPlayersHaveCalled() && nextIndex == startingPlayerIndex {
+				currentIndex = nextIndex
+				break
+			}
+			currentIndex = nextIndex
 			continue
-		}
-
-		table.CurrentTurn = player.ID
-		now = time.Now()
-		table.EndTime = int(now.Unix()) + table.TurnTime
-		table.SetTablePlayerActions(currentIndex)
-		if player.IsAFK {
-			table.EndTime = int(now.Unix()) + table.TurnTime/3
-		}
-
-		if err := SendPTableUpdateToNATS(js, table); err != nil {
-			return fmt.Errorf("Error enviando actualización a JetStream: %v", err)
 		}
 
 		tournamentID := strconv.Itoa(table.TournamentID)
@@ -1131,7 +1220,6 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 			log.Printf("Error verificando consumidor %s: %v", consumerName, err)
 		}
 
-		// Eliminar consumidor solo si existe
 		if consumerInfo != nil {
 			if err := js.DeleteConsumer("POKER_TOURNAMENT", consumerName); err != nil {
 				log.Printf("Error eliminando el consumidor %s: %v", consumerName, err)
@@ -1142,10 +1230,25 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 			nats.Durable(consumerName),
 			nats.AckExplicit(),
 			nats.DeliverNew(),
-			//nats.DeliverLast(), en un futuro usar esto para las pre actions
 		)
 		if err != nil {
 			return fmt.Errorf("Error suscribiéndose a JetStream subject %s: %v", subject, err)
+		}
+
+		table.CurrentTurn = player.ID
+		now = time.Now()
+		table.EndTime = int(now.Unix()) + table.TurnTime
+		table.SetTablePlayerActions(currentIndex)
+		if player.IsAFK {
+			table.EndTime = int(now.Unix()) + table.TurnTime/3
+		}
+
+		player.IsTurn = true
+		if err := SendPlayerUpdateToNATS(js, table.ID, *player, table.TournamentID); err != nil {
+			return fmt.Errorf("Error enviando actualización de jugador a JetStream: %v", err)
+		}
+		if err := SendPTableUpdateToNATS(js, table); err != nil {
+			return fmt.Errorf("Error enviando actualización a JetStream: %v", err)
 		}
 
 		select {
@@ -1160,58 +1263,13 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 				log.Printf("Error al marcar el mensaje como leído: %v", err)
 				break
 			}
+			action = table.normalizeIncomingAction(player, action)
 			player.LastAction = action.LastAction
 			player.IsAFK = false
 
-			switch action.LastAction {
-			case "raise":
-				raiseOccurred = true
-				table.LastToRaiserIndex = currentIndex
+			outcome := table.applyPlayerAction(currentIndex, action)
+			if outcome.raiseOccurred {
 				startingPlayerIndex = currentIndex
-				table.Players[currentIndex].TotalBet += action.LastBet
-				table.Players[currentIndex].Chips -= action.LastBet
-				table.BiggestBet = table.Players[currentIndex].TotalBet
-				table.ManageSidePots()
-				table.Players[currentIndex].CallAmount -= action.LastBet
-				table.SetTablePlayersCallAmount()
-				table.PlayerActedInRound = 1
-				for i := range table.Players {
-					if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
-						table.Players[i].LastAction = ""
-					}
-				}
-			case "fold":
-				table.PlayerActedInRound++
-				player.HasFold = true
-			case "call":
-				table.Players[currentIndex].TotalBet += action.LastBet
-				table.Players[currentIndex].Chips -= action.LastBet
-				table.Players[currentIndex].HasFold = false
-				table.ManageSidePots()
-				table.Players[currentIndex].CallAmount -= action.LastBet
-				table.PlayerActedInRound++
-			case "allin":
-				table.Players[currentIndex].HasAllIn = true
-				table.Players[currentIndex].TotalBet += table.Players[currentIndex].Chips
-				biggestBet := table.Players[currentIndex].TotalBet
-				table.Players[currentIndex].Chips = 0
-				if table.Players[currentIndex].TotalBet > table.Players[currentIndex].CallAmount {
-					table.BiggestBet = biggestBet
-					raiseOccurred = true
-					table.LastToRaiserIndex = currentIndex
-					startingPlayerIndex = currentIndex
-					table.PlayerActedInRound = 1
-					for i := range table.Players {
-						if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
-							table.Players[i].LastAction = ""
-						}
-					}
-					table.SetTablePlayersCallAmount()
-				}
-				table.ManageSidePots()
-				table.Players[currentIndex].CallAmount -= table.Players[currentIndex].TotalBet
-			case "check":
-				table.PlayerActedInRound++
 			}
 		case <-time.After(time.Duration(table.TurnTime) * time.Second):
 			player.IsTurn = false
@@ -1222,9 +1280,14 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 				player.LastAction = "check"
 				player.HasFold = false
 			}
-			table.PlayerActedInRound++
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+		actionsTaken++
+		table.PlayerActedInRound = actionsTaken
+
+		if err := SendPlayerUpdateToNATS(js, table.ID, *player, table.TournamentID); err != nil {
+			return fmt.Errorf("Error enviando actualización de jugador a JetStream: %v", err)
 		}
 
 		if sub != nil {
@@ -1232,31 +1295,173 @@ func (table *Table) HandleTurn(ctx context.Context, js nats.JetStreamContext) er
 		}
 		table.UpdateTotalBet()
 		table.AllPlayersExceptOneFold()
-		currentIndex = (currentIndex + 1) % len(table.Players)
-		if table.AllFoldExceptOne {
+		if table.AllPlayersAllInExceptFolded() || (table.AllPlayersAllInExceptOneAndFolded() && table.AllPlayersHaveCalled()) || table.AllFoldExceptOne {
 			break
 		}
-		if currentIndex == table.LastToRaiserIndex && !raiseOccurred {
+		nextIndex := (currentIndex + 1) % len(table.Players)
+		if table.AllPlayersHaveCalled() && nextIndex == startingPlayerIndex {
+			currentIndex = nextIndex
 			break
 		}
-		if currentIndex == startingPlayerIndex && !raiseOccurred {
-			break
-		}
-		if raiseOccurred {
-			table.PlayerActedInRound = 1
-			raiseOccurred = false
-		}
-		if table.PlayerActedInRound == len(table.Players) {
-			break
-		}
+		currentIndex = nextIndex
 	}
 
 	for i := range table.Players {
 		table.Players[i].IsTurn = false
 	}
+	table.CurrentTurn = ""
 	table.PlayerActedInRound = 0
 
 	return nil
+}
+
+func (table *Table) normalizeIncomingAction(player *Player, action Player) Player {
+	requiredCall := table.BiggestBet - player.TotalBet
+	if requiredCall < 0 {
+		requiredCall = 0
+	}
+	convertToAllIn := func() Player {
+		if player.Chips <= 0 {
+			action.LastAction = "check"
+			action.LastBet = 0
+			return action
+		}
+		action.LastAction = "allin"
+		action.LastBet = player.Chips
+		return action
+	}
+	switch action.LastAction {
+	case "raise":
+		if player.TotalBet+player.Chips <= table.BiggestBet {
+			if player.Chips >= requiredCall && requiredCall > 0 {
+				action.LastAction = "call"
+				action.LastBet = requiredCall
+				return action
+			}
+			return convertToAllIn()
+		}
+		minRaise := table.BBValue
+		if minRaise <= 0 {
+			minRaise = 1
+		}
+		minContribution := requiredCall + minRaise
+		if minContribution > player.Chips {
+			return convertToAllIn()
+		}
+		if action.LastBet < minContribution {
+			action.LastBet = minContribution
+		}
+	case "call":
+		if requiredCall <= 0 {
+			action.LastAction = "check"
+			action.LastBet = 0
+			return action
+		}
+		if requiredCall >= player.Chips {
+			return convertToAllIn()
+		}
+		action.LastBet = requiredCall
+	case "check":
+		if requiredCall > 0 {
+			if player.Chips >= requiredCall {
+				action.LastAction = "call"
+				action.LastBet = requiredCall
+			} else {
+				return convertToAllIn()
+			}
+		}
+	case "allin":
+		return convertToAllIn()
+	default:
+		action.LastAction = "fold"
+		action.LastBet = 0
+	}
+	if action.LastBet < 0 {
+		action.LastBet = 0
+	}
+	if action.LastBet > player.Chips {
+		return convertToAllIn()
+	}
+	return action
+}
+
+type actionOutcome struct {
+	raiseOccurred bool
+}
+
+func (table *Table) applyPlayerAction(currentIndex int, action Player) actionOutcome {
+	outcome := actionOutcome{}
+	player := &table.Players[currentIndex]
+	switch action.LastAction {
+	case "raise":
+		outcome.raiseOccurred = true
+		table.LastToRaiserIndex = currentIndex
+		player.TotalBet += action.LastBet
+		player.Chips -= action.LastBet
+		if player.Chips <= 0 {
+			player.Chips = 0
+			player.HasAllIn = true
+			player.LastAction = "allin"
+		}
+		table.BiggestBet = player.TotalBet
+		table.ManageSidePots()
+		player.CallAmount -= action.LastBet
+		if player.CallAmount < 0 {
+			player.CallAmount = 0
+		}
+		if player.HasAllIn {
+			player.CallAmount = 0
+		}
+		table.SetTablePlayersCallAmount()
+		for i := range table.Players {
+			if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
+				table.Players[i].LastAction = ""
+			}
+		}
+	case "fold":
+		player.HasFold = true
+	case "call":
+		player.TotalBet += action.LastBet
+		player.Chips -= action.LastBet
+		player.HasFold = false
+		table.ManageSidePots()
+		player.CallAmount -= action.LastBet
+		if player.CallAmount < 0 {
+			player.CallAmount = 0
+		}
+		if player.Chips <= 0 {
+			player.Chips = 0
+			player.HasAllIn = true
+			player.LastAction = "allin"
+		}
+	case "allin":
+		chipsInvested := player.Chips
+		if chipsInvested <= 0 {
+			break
+		}
+		player.HasAllIn = true
+		player.TotalBet += chipsInvested
+		player.Chips = 0
+		table.ManageSidePots()
+		if player.TotalBet > table.BiggestBet {
+			table.BiggestBet = player.TotalBet
+			table.LastToRaiserIndex = currentIndex
+			outcome.raiseOccurred = true
+			for i := range table.Players {
+				if table.Players[i].ID != player.ID && !table.Players[i].HasFold && !table.Players[i].HasAllIn {
+					table.Players[i].LastAction = ""
+				}
+			}
+			table.SetTablePlayersCallAmount()
+		} else {
+			player.CallAmount -= chipsInvested
+			if player.CallAmount < 0 {
+				player.CallAmount = 0
+			}
+		}
+	case "check":
+	}
+	return outcome
 }
 
 func CheckLastTableInTables(tables []Table, js nats.JetStreamContext) (bool, error) {

@@ -1,0 +1,44 @@
+# Build artifacts
+bin/
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go modules / vendor
+vendor/
+
+# Coverage / test outputs
+coverage.out
+*.coverprofile
+*.testlog
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.code-workspace
+
+# Environment & secrets
+.env
+.env.*
+*.local
+*.key
+*.pem
+
+# Generated data / runtime mounts
+postgres_data/
+nats-data/
+tempora-data/
+tmp/

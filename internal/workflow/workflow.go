@@ -13,6 +13,13 @@ import (
 
 const MaxRoundsBeforeReset = 10
 
+var (
+	playerWorkflowFn      interface{} = PlayerWorkflow
+	reshuffleTablesFn                 = poker.Reshuffle
+	checkLastTableFn                  = poker.CheckLastTableInTables
+	handleTableActivityFn interface{} = HandleTableActivitie
+)
+
 func PlayerWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) {
 
 	activityOptions := workflow.ActivityOptions{
@@ -29,7 +36,7 @@ func PlayerWorkflow(ctx workflow.Context, table poker.Table, config *config.Conf
 
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
-	err := workflow.ExecuteActivity(ctx, HandleTableActivitie, &table, config).Get(ctx, &table)
+	err := workflow.ExecuteActivity(ctx, handleTableActivityFn, &table, config).Get(ctx, &table)
 	if err != nil {
 		return table, err
 	}
@@ -40,7 +47,7 @@ func PlayerWorkflow(ctx workflow.Context, table poker.Table, config *config.Conf
 func RoundWorkflow(ctx workflow.Context, table poker.Table, config *config.Config) (poker.Table, error) { //use in future?
 	table.Round++
 
-	we1 := workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, table, config)
+	we1 := workflow.ExecuteChildWorkflow(ctx, playerWorkflowFn, table, config)
 
 	err := we1.Get(ctx, &table)
 	if err != nil {
@@ -71,14 +78,14 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 	js := GetJetStream()
 
 	for i := 0; i < len(tables); i++ {
-		we1 := workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, tables[i], config)
+		we1 := workflow.ExecuteChildWorkflow(ctx, playerWorkflowFn, tables[i], config)
 		childWorkflows[tables[i].ID] = we1
 	}
 
 	for len(childWorkflows) > 0 {
 		selector := workflow.NewSelector(ctx)
 
-		tournamentEnds, err := poker.CheckLastTableInTables(tables, js)
+		tournamentEnds, err := checkLastTableFn(tables, js)
 		if err != nil {
 			return tables, err
 		}
@@ -101,7 +108,7 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 						}
 					}
 
-					tables = poker.Reshuffle(tables, updatedTable, js)
+					tables = reshuffleTablesFn(tables, updatedTable, js)
 
 					updatedTable, foundTable := poker.GetTableByID(tables, updatedTable.ID)
 
@@ -110,7 +117,7 @@ func TournamentWorkflow(ctx workflow.Context, tables []poker.Table, config *conf
 							delete(childWorkflows, id)
 						}
 						if foundTable {
-							childWorkflows[id] = workflow.ExecuteChildWorkflow(ctx, PlayerWorkflow, updatedTable, config)
+							childWorkflows[id] = workflow.ExecuteChildWorkflow(ctx, playerWorkflowFn, updatedTable, config)
 						}
 					}
 				} else {

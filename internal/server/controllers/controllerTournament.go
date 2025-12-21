@@ -18,6 +18,8 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
+var httpGet = http.Get
+
 type TournamentDTO struct {
 	ID                    uint
 	Name                  string    `json:"name"`
@@ -398,7 +400,7 @@ func convertToTournamentController(dto models.Tournament) poker.Tournament {
 func isValidTransactionBsc(txHash string, senderWallet string, requiredAmount float64, config *config.ServerConfig) bool {
 	url := fmt.Sprintf("https://api.bscscan.com/api?module=account&action=tokentx&txhash=%s&apikey=%s", txHash, config.BcsApiKey)
 
-	resp, err := http.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return false
 	}
@@ -451,7 +453,7 @@ func isValidTransactionBsc(txHash string, senderWallet string, requiredAmount fl
 	valueInUSDT /= 1e6 // UST tiene 6 decimales en BSC
 
 	txDetailsURL := fmt.Sprintf("https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, config.BcsApiKey)
-	txDetailsResp, err := http.Get(txDetailsURL)
+	txDetailsResp, err := httpGet(txDetailsURL)
 	if err != nil {
 		fmt.Println("Error llamando a BscScan API para obtener detalles de la transacción:", err)
 		return false
@@ -493,7 +495,7 @@ func isValidTransactionBsc(txHash string, senderWallet string, requiredAmount fl
 	}
 
 	blockURL := fmt.Sprintf("https://api.bscscan.com/api?module=proxy&action=eth_getBlockByNumber&tag=%s&boolean=true&apikey=%s", tx.BlockNumber, config.BcsApiKey)
-	blockResp, err := http.Get(blockURL)
+	blockResp, err := httpGet(blockURL)
 	if err != nil {
 		return false
 	}
@@ -534,7 +536,7 @@ func isValidTransactionBsc(txHash string, senderWallet string, requiredAmount fl
 func isValidTransactionSepolia(txHash string, senderWallet string, requiredAmount float64, config *config.ServerConfig) bool {
 	url := fmt.Sprintf("https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=%s&apikey=%s", txHash, config.SepApiKey)
 
-	resp, err := http.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return false
 	}
@@ -601,7 +603,7 @@ func isValidTransactionSepolia(txHash string, senderWallet string, requiredAmoun
 	}
 
 	blockURL := fmt.Sprintf("https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getBlockByNumber&tag=%s&boolean=true&apikey=%s", txResponse.Result.BlockNumber, config.SepApiKey)
-	blockResp, err := http.Get(blockURL)
+	blockResp, err := httpGet(blockURL)
 	if err != nil {
 		return false
 	}

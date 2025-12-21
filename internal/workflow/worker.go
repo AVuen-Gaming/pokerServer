@@ -17,6 +17,7 @@ import (
 
 var (
 	jetStreamInstance nats.JetStreamContext
+	natsConnInstance  *nats.Conn
 	dbInstance        *gorm.DB
 	temporalInstance  client.Client
 	once              sync.Once
@@ -30,6 +31,7 @@ func StartWorker(cfg *config.Config, dataConverter converter.DataConverter) {
 			log.Fatalf("Failed to connect to NATS: %v", err)
 		}
 
+		natsConnInstance = natsConn
 		js, err := natsConn.JetStream()
 		if err != nil {
 			log.Fatalf("Failed to create JetStream context: %v", err)
@@ -104,10 +106,30 @@ func GetJetStream() nats.JetStreamContext {
 	return jetStreamInstance
 }
 
+func GetNATSConnection() *nats.Conn {
+	return natsConnInstance
+}
+
 func GetTemporalClient() client.Client {
 	return temporalInstance
 }
 
 func GetDB() *gorm.DB {
 	return dbInstance
+}
+
+func SetJetStream(js nats.JetStreamContext) {
+	jetStreamInstance = js
+}
+
+func SetNATSConnection(conn *nats.Conn) {
+	natsConnInstance = conn
+}
+
+func SetDBInstance(dbConn *gorm.DB) {
+	dbInstance = dbConn
+}
+
+func SetTemporalClient(c client.Client) {
+	temporalInstance = c
 }
